@@ -1,7 +1,7 @@
 ## pollnet
-Pollnet contains come header only network libs for tcp, udp or ethernet data processing on Linux. Most of its APIs are non-blocking nor event-driven for simplicity and low-latency purposes, which requires the user to frequently poll the lib to receive new data from the network. 
+Pollnet contains some header only network libs for tcp, udp or ethernet data processing on Linux. Most of its APIs are non-blocking nor event-driven for simplicity and low-latency purposes, which requires the user to poll the lib frequently to receive new data from the network. 
 
-Another important feature of pollnet is that it supports low level apis for solarflare network adapters: Tcpdirect and Efvi, providing the same interface as its Socket counterparts, allowing the user to easily switch between Socket and Tcpdirect/Evfi implementation depending on whether or not solarflare NIC is being used.
+Another important feature of pollnet is that it supports low level apis for solarflare network adapters: Tcpdirect and Efvi, providing the same interface as its Socket counterparts, allowing the user to easily switch between Socket and Tcpdirect/Evfi implementations depending on whether or not solarflare NIC is being used.
 
 ## TCP
 TcpConnection, TcpClient and TcpServer classes are implemented in both Socket and Tcpdirect versions.
@@ -16,6 +16,7 @@ const std::string& getLastError();
 void close(const char* reason);
 
 // check if this connection is alive
+// call getLastError() if not
 bool isConnected();
 
 // get remote address
@@ -43,9 +44,10 @@ struct Packet{
 connection.read([](const char* data, uint32_t size) {
       while (size >= sizeof(Packet)) {
         const Packet& pack = *(const Packet*)data;
+        // handle pack...
+        
         data += sizeof(Packet);
         size -= sizeof(Packet);
-        // handle pack...
       }
       return size;
     });
@@ -57,10 +59,12 @@ Another thing to note is that pollnet won't print or log any error msg internall
 TcpClient is a derived class on TcpConnection:
 ```c++
 // interface_name can be empty for Socket version
+// call getLastError() if return false
 bool init(const std::string& interface_name, const std::string& server_ip, uint16_t server_port);
 
 // connect to server, may block.
 // return true if isConnected()
+// else call getLastError()
 bool connect();
 ```
 
@@ -68,6 +72,7 @@ TcpServer creates new TcpConnections instead:
 ```c++
 
 // interface_name can be empty for Socket version
+// call getLastError() if return false
 bool init(const std::string& interface_name, const std::string& server_ip, uint16_t server_port);
 
 using TcpConnectionPtr = std::unique_ptr<TcpConnection>;
