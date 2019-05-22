@@ -24,7 +24,7 @@ SOFTWARE.
 #pragma once
 #include <arpa/inet.h>
 
-template<bool WaitForResend = false, uint32_t BUFSIZE = 1 << 20>
+template<bool WaitForResend = true, uint32_t BUFSIZE = 1 << 20>
 class TcpStream
 {
 public:
@@ -58,57 +58,82 @@ public:
     uint32_t seq = ntohl(tcp_header.sequenceNumber);
     if (tcp_header.synFlag) {
       init_stream = false;
+      seq++;
     }
     if (!init_stream) {
       init_stream = true;
-      expect_seq = seq;
-      head = tail = 0;
-    }
-    int32_t seq_diff = seq - expect_seq;
-    if (seq_diff) {
-      if (seq_diff > 0 && !WaitForResend) {
-        head = tail = 0;
-        expect_seq = seq;
-      }
-      else {
-        return false;
-      }
+      buf_seq = seq;
+      n_seg = 1;
+      segs[0].first = segs[0].second = 0;
     }
 
     uint32_t header_len = sizeof(IpHeader) + tcp_header.dataOffset * 4;
     const char* new_data = data + IPHeaderPos + header_len;
     uint32_t new_size = ntohs(ip_header.totalLength) - header_len;
-
-    expect_seq += new_size + tcp_header.synFlag;
-
-    if (new_size == 0) {
-      return false;
+    uint32_t loc = seq - buf_seq; // location of seq in buffer
+    uint32_t loc_end = loc + new_size;
+    int32_t diff = loc - segs[0].second;
+    if (diff < 0) {
+      loc -= diff;
+      new_data -= diff;
+      new_size += diff;
     }
-    if (new_size + tail > BUFSIZE) {
-      return false;
+    if ((int32_t)new_size <= 0) return false; // obsolete data
+    if (loc_end > BUFSIZE) return false;      // buff full
+    if (!WaitForResend && loc > segs[0].second) {
+      segs[0].first = segs[0].second = loc;
     }
-    if (tail == 0) {
-      uint32_t remaining = handler(new_data, new_size);
+    uint32_t i = 0;
+    while (i < n_seg && segs[i].second < loc) i++;
+    uint32_t j = i;
+    while (j < n_seg && segs[j].first <= loc_end) j++;
+
+    if (i == j) {                         // insert new seg
+      if (n_seg == MAX_SEG) return false; // too many segs
+      for (j = n_seg; j > i; j--) {
+        segs[j] = segs[j - 1];
+      }
+      segs[i].first = loc;
+      segs[i].second = loc_end;
+      n_seg++;
+    }
+    else { // merge segs
+      segs[i].first = std::min(segs[i].first, loc);
+      segs[i].second = std::max(segs[j - 1].second, loc_end);
+      uint32_t i2 = i + 1;
+      if (i2 < j) {
+        for (; j < n_seg; i2++, j++) {
+          segs[i2] = segs[j];
+        }
+        n_seg = i2;
+      }
+    }
+
+    if (segs[0].first == loc && segs[0].second == loc_end) {
+      uint32_t remaining = handler(new_data, new_size); // zero copy
+      segs[0].first = segs[0].second - remaining;
       if (remaining) {
-        new_data += new_size - remaining;
-        memcpy(recvbuf, new_data, remaining);
-        tail = remaining;
+        uint32_t consumed = new_size - remaining;
+        memcpy(recvbuf + segs[0].first, new_data + consumed, remaining);
       }
     }
     else {
-      memcpy(recvbuf + tail, new_data, new_size);
-      tail += new_size;
-      uint32_t remaining = handler(recvbuf + head, tail - head);
-      if (remaining == 0) {
-        head = tail = 0;
+      memcpy(recvbuf + loc, new_data, new_size);
+      if (i != 0) return false; // no new data for handler
+      uint32_t remaining = handler(recvbuf + segs[0].first, segs[0].second - segs[0].first);
+      segs[0].first = segs[0].second - remaining;
+    }
+
+    if (segs[0].first >= BUFSIZE / 2) {
+      uint32_t total_size = segs[n_seg - 1].second - segs[0].first;
+      if (total_size) {
+        memcpy(recvbuf, recvbuf + segs[0].first, total_size);
       }
-      else {
-        head = tail - remaining;
-        if (head >= BUFSIZE / 2) {
-          memcpy(recvbuf, recvbuf + head, remaining);
-          head = 0;
-          tail = remaining;
-        }
+      uint32_t diff = segs[0].first;
+      buf_seq += diff;
+      for (i = 0; i < n_seg; i++) {
+        segs[i].first -= diff;
+        segs[i].second -= diff;
       }
     }
     return true;
@@ -192,8 +217,9 @@ private:
   uint32_t filter_dst_ip;
   uint16_t filter_src_port;
   uint16_t filter_dst_port;
-  uint32_t expect_seq;
-  uint32_t head;
-  uint32_t tail;
+  uint32_t buf_seq;
+  static const int MAX_SEG = 5;
+  uint32_t n_seg;
+  std::pair<uint32_t, uint32_t> segs[MAX_SEG];
   char recvbuf[BUFSIZE];
 };
