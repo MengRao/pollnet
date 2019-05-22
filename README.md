@@ -132,7 +132,7 @@ bool filterPacket(const char* data, uint32_t size);
 template<typename Handler>
 bool handlePacket(const char* data, uint32_t size, Handler handler);
 ```
-Note that TcpStream has a template parameter `WaitForResend = false`, which indicates whether to wait for resend data once data drop is detected. If set to true, use will get intact tcp stream. But sometimes this is impossible because e.g. switch could drop packets on mirror port which would never be resent. Setting WaitForResend to false adds packets drop tolerance and also timeliness for new data handling. Once packet drop is detected, any remaining data is also discarded and new data is feed to user immediately, thus user must be ready for handling stream of data where some segments are missing.
+Note that TcpStream has a template parameter `WaitForResend = false`, which indicates whether to wait for resend data once data drop is detected. If set to true, use will get intact tcp stream. But sometimes this is impossible because e.g. switch could drop packets on mirror port which would never be resent. Setting WaitForResend to false adds packets drop tolerance and also timeliness for new data handling. Once packet drop is detected, any remaining data is also discarded and new data is feed to user immediately, thus user must be ready for handling stream of data where segments could be missing between different calls of `handlePacket`.
 
 ## How to switch between different implementations
 In examples, this is done via macro selections so that tcpdirect/efvi headers will not be included to prevent from compile errors on machines where onload is not installed.
