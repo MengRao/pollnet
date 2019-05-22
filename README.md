@@ -56,7 +56,7 @@ connection.read([](const char* data, uint32_t size) {
 Another thing to note is that pollnet won't print or log any error msg internally, which requires the user to fetch it by `getLastError()` whenever an error occurred.
 
 
-TcpClient is a derived class on TcpConnection:
+TcpClient is a derived class from TcpConnection:
 ```c++
 // interface_name can be empty for Socket version
 // call getLastError() if return false
@@ -105,9 +105,9 @@ bool recvfrom(Handler handler);
 ```
 
 ## EthReceiver and TcpStream
-In some cases we need to capture and process raw packets from the network that are not destined to our host by the means of TAP or SPAN etc... 
+In some cases we need to capture and process raw packets from the network that are not destined to our host by means of TAP or SPAN. 
 
-EthReceiver can capture/sniff ethernet packets received on a NIC port and requires root permission(which is similar to tcpdump), it has both Socket and Efvi versions:
+EthReceiver can capture/sniff ethernet packets received on a NIC port and requires root permission(similar to tcpdump), it has both Socket and Efvi versions:
 ```c++
 bool init(const std::string& interface);
 
@@ -118,7 +118,7 @@ bool read(Handler handler);
 
 ```
 
-TcpStream is a tool for filtering and reconstructing unidirectional tcp stream from raw ethernet packets, allowing the user to process tcp payload as if it's from TcpConnection. TcpStream can be used in conjunction with EthReceiver or any pcap readers.
+TcpStream is a tool for filtering and reconstructing unidirectional tcp stream from raw ethernet packets, allowing the user to process tcp payload as if it's from a TcpConnection. TcpStream can be used in conjunction with EthReceiver or any pcap readers.
 ```c++
 // init filter based on src and dst addresses
 // use "0.0.0.0" for wildcard ip and 0 for wildcard port
