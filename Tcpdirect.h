@@ -76,6 +76,7 @@ public:
           saveError("zft_send_single error", sent);
           return false;
         }
+        zf_reactor_perform(stack);
         continue;
       }
       data += sent;
