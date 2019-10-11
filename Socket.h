@@ -257,6 +257,19 @@ public:
     return conn;
   }
 
+  bool accept2(TcpConnection& conn) {
+    struct sockaddr_in clientaddr;
+    socklen_t addr_len = sizeof(clientaddr);
+    int fd = ::accept(listenfd_, (struct sockaddr*)&(clientaddr), &addr_len);
+    if (fd < 0) {
+      return false;
+    }
+    if (!conn.open(fd)) {
+      return false;
+    }
+    return true;
+  }
+
 private:
   void saveError(const char* msg) {
     last_error_ = msg;

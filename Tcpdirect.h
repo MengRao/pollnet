@@ -323,6 +323,14 @@ public:
     return conn;
   }
 
+  bool accept2(TcpConnection& conn) {
+    struct zft* zock;
+    zf_reactor_perform(stack_);
+    if (zftl_accept(listener_, &zock) < 0) return false;
+    conn.open(zock, stack_);
+    return true;
+  }
+
 private:
   void saveError(const char* msg, int rc) {
     last_error_ = msg;
