@@ -80,6 +80,10 @@ using TcpConnectionPtr = std::unique_ptr<TcpConnection>;
 // try accepting new connections, non-blocking.
 // if no new connection it returns TcpConnectionPtr().
 TcpConnectionPtr accept();
+
+// similar to accept, but new connection is set to the parameter: a closed connection
+// return true if new connection is accepted
+bool accept2(TcpConnection& conn);
 ```
 
 Note that TcpClient and TcpServer has a template parameter `uint32_t RecvBufSize = 4096`, RecvBufSize must be as least twice the largest application packet its connection is going to receive.
