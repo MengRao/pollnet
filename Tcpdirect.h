@@ -68,9 +68,11 @@ public:
     }
   }
 
-  bool write(const char* data, uint32_t size) {
+  bool write(const char* data, uint32_t size, bool more = false) {
+    int flags = 0;
+    if (more) flags |= MSG_MORE;
     do {
-      int sent = zft_send_single(zock_, data, size, 0);
+      int sent = zft_send_single(zock_, data, size, flags);
       if (sent < 0) {
         if (sent != -EAGAIN && sent != -ENOMEM) {
           saveError("zft_send_single error", sent);
@@ -85,8 +87,10 @@ public:
     return true;
   }
 
-  bool writeNonblock(const char* data, uint32_t size) {
-    if (zft_send_single(zock_, data, size, 0) != size) {
+  bool writeNonblock(const char* data, uint32_t size, bool more = false) {
+    int flags = 0;
+    if (more) flags |= MSG_MORE;
+    if (zft_send_single(zock_, data, size, flags) != size) {
       close("zft_send_single failed");
       return false;
     }

@@ -59,9 +59,11 @@ public:
     }
   }
 
-  bool write(const char* data, uint32_t size) {
+  bool write(const char* data, uint32_t size, bool more = false) {
+    int flags = MSG_NOSIGNAL;
+    if (more) flags |= MSG_MORE;
     do {
-      int sent = ::send(fd_, data, size, MSG_NOSIGNAL);
+      int sent = ::send(fd_, data, size, flags);
       if (sent < 0) {
         if (errno != EAGAIN) {
           close("send error");
@@ -75,8 +77,10 @@ public:
     return true;
   }
 
-  bool writeNonblock(const char* data, uint32_t size) {
-    int sent = ::send(fd_, data, size, MSG_NOSIGNAL);
+  bool writeNonblock(const char* data, uint32_t size, bool more = false) {
+    int flags = MSG_NOSIGNAL;
+    if (more) flags |= MSG_MORE;
+    int sent = ::send(fd_, data, size, flags);
     if (sent != size) {
       close("send error");
       return false;
