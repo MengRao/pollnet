@@ -51,9 +51,9 @@ public:
     return ::getpeername(fd_, (struct sockaddr*)&addr, &addr_len) == 0;
   }
 
-  void close(const char* reason) {
+  void close(const char* reason, bool check_errno = false) {
     if (fd_ >= 0) {
-      saveError(reason);
+      saveError(reason, check_errno);
       ::close(fd_);
       fd_ = -1;
     }
@@ -66,7 +66,7 @@ public:
       int sent = ::send(fd_, data, size, flags);
       if (sent < 0) {
         if (errno != EAGAIN) {
-          close("send error");
+          close("send error", true);
           return false;
         }
         continue;
@@ -82,7 +82,7 @@ public:
     if (more) flags |= MSG_MORE;
     int sent = ::send(fd_, data, size, flags);
     if (sent != size) {
-      close("send error");
+      close("send error", true);
       return false;
     }
     return true;
@@ -94,7 +94,7 @@ public:
     if (ret <= 0) {
       if (ret < 0 && errno == EAGAIN) return false;
       if (ret < 0) {
-        close("read error");
+        close("read error", true);
       }
       else {
         close("remote close");
@@ -131,23 +131,25 @@ protected:
 
     int flags = fcntl(fd_, F_GETFL, 0);
     if (fcntl(fd_, F_SETFL, flags | O_NONBLOCK) < 0) {
-      close("fcntl O_NONBLOCK error");
+      close("fcntl O_NONBLOCK error", true);
       return false;
     }
 
     int yes = 1;
     if (setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes)) < 0) {
-      close("setsockopt TCP_NODELAY error");
+      close("setsockopt TCP_NODELAY error", true);
       return false;
     }
 
     return true;
   }
 
-  void saveError(const char* msg) {
+  void saveError(const char* msg, bool check_errno) {
     last_error_ = msg;
-    last_error_ += ": ";
-    last_error_ += strerror(errno);
+    if (check_errno) {
+      last_error_ += ": ";
+      last_error_ += strerror(errno);
+    }
   }
 
   int fd_ = -1;
@@ -170,7 +172,7 @@ public:
   bool connect() {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) {
-      this->saveError("socket error");
+      this->saveError("socket error", true);
       return false;
     }
     struct sockaddr_in server_addr;
@@ -179,7 +181,7 @@ public:
     server_addr.sin_port = htons(server_port_);
     bzero(&(server_addr.sin_zero), 8);
     if (::connect(fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-      this->saveError("connect error");
+      this->saveError("connect error", true);
       ::close(fd);
       return false;
     }
