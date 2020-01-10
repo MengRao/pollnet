@@ -46,10 +46,30 @@ public:
 
   bool isConnected() { return fd_ >= 0; }
 
+  bool connect(const char* server_ip, uint16_t server_port) {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+      saveError("socket error", true);
+      return false;
+    }
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    inet_pton(AF_INET, server_ip, &(server_addr.sin_addr));
+    server_addr.sin_port = htons(server_port);
+    bzero(&(server_addr.sin_zero), 8);
+    if (::connect(fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+      saveError("connect error", true);
+      ::close(fd);
+      return false;
+    }
+    return open(fd);
+  }
+
   bool getPeername(struct sockaddr_in& addr) {
     socklen_t addr_len = sizeof(addr);
     return ::getpeername(fd_, (struct sockaddr*)&addr, &addr_len) == 0;
   }
+
 
   void close(const char* reason, bool check_errno = false) {
     if (fd_ >= 0) {
@@ -122,6 +142,7 @@ public:
   }
 
 protected:
+
   template<uint32_t>
   friend class SocketTcpServer;
 
@@ -170,24 +191,8 @@ public:
   }
 
   bool connect() {
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0) {
-      this->saveError("socket error", true);
-      return false;
-    }
-    struct sockaddr_in server_addr;
-    server_addr.sin_family = AF_INET;
-    inet_pton(AF_INET, server_ip_.data(), &(server_addr.sin_addr));
-    server_addr.sin_port = htons(server_port_);
-    bzero(&(server_addr.sin_zero), 8);
-    if (::connect(fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-      this->saveError("connect error", true);
-      ::close(fd);
-      return false;
-    }
-    return this->open(fd);
+    return SocketTcpConnection<RecvBufSize>::connect(server_ip_.data(), server_port_);
   }
-
 
 private:
   std::string server_ip_;

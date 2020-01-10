@@ -157,6 +157,34 @@ public:
   }
 
 protected:
+  bool connect(struct zf_attr* attr, const char* server_ip, uint16_t server_port) {
+    int rc;
+    struct zft_handle* tcp_handle;
+    if ((rc = zft_alloc(stack_, attr, &tcp_handle)) < 0) {
+      saveError("zft_alloc error", rc);
+      return false;
+    }
+    struct sockaddr_in servaddr;
+    memset(&servaddr, 0, sizeof(servaddr));
+    servaddr.sin_family = AF_INET; // IPv4
+    servaddr.sin_port = htons(server_port);
+    inet_pton(AF_INET, server_ip, &(servaddr.sin_addr));
+
+    close("reconnect");
+    if ((rc = zft_connect(tcp_handle, (struct sockaddr*)&servaddr, sizeof(servaddr), &zock_)) < 0) {
+      saveError("zft_connect error", rc);
+      zft_handle_free(tcp_handle);
+      return false;
+    }
+    while (zft_state(zock_) == TCP_SYN_SENT) zf_reactor_perform(stack_);
+    if (zft_state(zock_) != TCP_ESTABLISHED) {
+      saveError("zft_state error", 0);
+      return false;
+    }
+    open(zock_, stack_);
+    return true;
+  }
+
   template<uint32_t>
   friend class TcpdirectTcpServer;
 
@@ -223,33 +251,8 @@ public:
   }
 
   bool connect() {
-    int rc;
-    struct zft_handle* tcp_handle;
-    if ((rc = zft_alloc(this->stack_, attr_, &tcp_handle)) < 0) {
-      this->saveError("zft_alloc error", rc);
-      return false;
-    }
-    struct sockaddr_in servaddr;
-    memset(&servaddr, 0, sizeof(servaddr));
-    servaddr.sin_family = AF_INET; // IPv4
-    servaddr.sin_port = htons(server_port_);
-    inet_pton(AF_INET, server_ip_.data(), &(servaddr.sin_addr));
-
-    this->close("reconnect");
-    if ((rc = zft_connect(tcp_handle, (struct sockaddr*)&servaddr, sizeof(servaddr), &this->zock_)) < 0) {
-      this->saveError("zft_connect error", rc);
-      zft_handle_free(tcp_handle);
-      return false;
-    }
-    while (zft_state(this->zock_) == TCP_SYN_SENT) zf_reactor_perform(this->stack_);
-    if (zft_state(this->zock_) != TCP_ESTABLISHED) {
-      this->saveError("zft_state error", 0);
-      return false;
-    }
-    this->open(this->zock_, this->stack_);
-    return true;
+    return TcpdirectTcpConnection<RecvBufSize>::connect(attr_, server_ip_.data(), server_port_);
   }
-
 
 private:
   struct zf_attr* attr_ = nullptr;
