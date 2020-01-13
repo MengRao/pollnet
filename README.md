@@ -10,7 +10,7 @@ TcpConnection, TcpClient and TcpServer classes are implemented in both Socket an
 TcpConnection:
 ```C++
 // get last error msg for printing/logging
-const std::string& getLastError();
+const char* getLastError();
 
 // close this connection with a reason msg that can be fetched later by getLastError();
 void close(const char* reason);
@@ -58,14 +58,12 @@ Another thing to note is that pollnet won't print or log any error msg internall
 
 TcpClient is a derived class from TcpConnection:
 ```c++
-// interface_name can be empty for Socket version
-// call getLastError() if return false
-bool init(const std::string& interface_name, const std::string& server_ip, uint16_t server_port);
 
 // connect to server, may block.
+// interface can be empty for Socket version
 // return true if isConnected()
 // else call getLastError()
-bool connect();
+bool connect(const char* interface, const char* server_ip, uint16_t server_port);
 ```
 
 TcpServer creates new TcpConnections instead:
@@ -73,7 +71,7 @@ TcpServer creates new TcpConnections instead:
 
 // interface_name can be empty for Socket version
 // call getLastError() if return false
-bool init(const std::string& interface_name, const std::string& server_ip, uint16_t server_port);
+bool init(const char* interface_name, const char* server_ip, uint16_t server_port);
 
 using TcpConnectionPtr = std::unique_ptr<TcpConnection>;
 
@@ -95,7 +93,7 @@ UdpReceiver provides Socket and Efvi versions, with multicast support:
 ```c++
 // interface_name can be empty for Socket version.
 // specify subscribe_ip (to the ip of the interface) to join multicast group if multicast msgs are to be received
-bool init(const std::string& interface, const std::string& dest_ip, uint16_t dest_port, const std::string& subscribe_ip = "");
+bool init(const char* interface, const char* dest_ip, uint16_t dest_port, const char* subscribe_ip = nullptr);
 
 // receive new data without blocking
 // Handler is of signature void (const char* data, uint32_t size).
@@ -113,7 +111,7 @@ In some cases we need to capture and process raw packets from the network that a
 
 EthReceiver can capture/sniff ethernet packets received on a NIC port and requires root permission(similar to tcpdump), it has both Socket and Efvi versions:
 ```c++
-bool init(const std::string& interface);
+bool init(const char* interface);
 
 // receive ethernet packet without blocking
 // Handler is of signature void (const char* data, uint32_t size) where data is raw ethernet packet with header
@@ -126,7 +124,7 @@ TcpStream is a tool for filtering and reconstructing unidirectional tcp stream f
 ```c++
 // init filter based on src and dst addresses
 // use "0.0.0.0" for wildcard ip and 0 for wildcard port
-void initFilter(const std::string& src_ip, uint16_t src_port, const std::string& dst_ip, uint16_t dst_port);
+void initFilter(const char* src_ip, uint16_t src_port, const char* dst_ip, uint16_t dst_port);
 
 // check if this raw packet matches the filter
 bool filterPacket(const char* data, uint32_t size);
