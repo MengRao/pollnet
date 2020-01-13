@@ -30,10 +30,10 @@ int main(int argc, char** argv) {
     cout << "usage: " << argv[0] << " interface src_ip src_port dst_ip dst_port" << endl;
     exit(1);
   }
-  std::string interface = argv[1];
-  std::string src_ip = argv[2];
+  const char* interface = argv[1];
+  const char* src_ip = argv[2];
   int src_port = stoi(argv[3]);
-  std::string dst_ip = argv[4];
+  const char* dst_ip = argv[4];
   int dst_port = stoi(argv[5]);
 
   EthReceiver receiver;

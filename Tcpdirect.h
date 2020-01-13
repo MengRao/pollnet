@@ -23,10 +23,10 @@ SOFTWARE.
 */
 #pragma once
 #include <string.h>
+#include <stdio.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <zf/zf.h>
-#include <string>
 #include <memory>
 
 namespace {
@@ -50,7 +50,7 @@ class TcpdirectTcpConnection
 public:
   ~TcpdirectTcpConnection() { close("destruct"); }
 
-  const std::string& getLastError() { return last_error_; };
+  const char* getLastError() { return last_error_; };
 
   bool isConnected() { return zock_ && zft_state(zock_) == TCP_ESTABLISHED; }
 
@@ -196,11 +196,7 @@ protected:
   }
 
   void saveError(const char* msg, int rc) {
-    last_error_ = msg;
-    if (rc < 0) {
-      last_error_ += ": ";
-      last_error_ += strerror(-rc);
-    }
+    snprintf(last_error_, sizeof(last_error_), "%s %s", msg, rc < 0 ? (const char*)strerror(-rc) : "");
   }
 
   struct zft* zock_ = nullptr;
@@ -209,40 +205,13 @@ protected:
   uint32_t head_;
   uint32_t tail_;
   char recvbuf_[RecvBufSize];
-  std::string last_error_;
+  char last_error_[64] = "";
 };
 
 template<uint32_t RecvBufSize = 4096>
 class TcpdirectTcpClient : public TcpdirectTcpConnection<RecvBufSize>
 {
 public:
-  bool init(const std::string& interface_name, const std::string& server_ip, uint16_t server_port) {
-    server_ip_ = server_ip;
-    server_port_ = server_port;
-
-    int rc;
-    if ((rc = _zf_init()) < 0) {
-      this->saveError("zf_init error", rc);
-      return false;
-    }
-
-    if ((rc = zf_attr_alloc(&attr_)) < 0) {
-      this->saveError("zf_attr_alloc error", rc);
-      return false;
-    }
-    zf_attr_set_str(attr_, "interface", interface_name.c_str());
-    zf_attr_set_int(attr_, "reactor_spin_count", 1);
-
-    if ((rc = zf_stack_alloc(attr_, &this->stack_)) < 0) {
-      this->saveError("zf_stack_alloc error", rc);
-      zf_attr_free(attr_);
-      attr_ = nullptr;
-      return false;
-    }
-
-    return true;
-  }
-
   ~TcpdirectTcpClient() {
     this->close("destruct");
     if (this->stack_) {
@@ -250,16 +219,33 @@ public:
     }
   }
 
-  bool connect() {
-    return TcpdirectTcpConnection<RecvBufSize>::connect(attr_, server_ip_.data(), server_port_);
+  bool connect(const char* interface, const char* server_ip, uint16_t server_port) {
+    int rc;
+    if ((rc = _zf_init()) < 0) {
+      this->saveError("zf_init error", rc);
+      return false;
+    }
+
+    if (!attr_) {
+      if ((rc = zf_attr_alloc(&attr_)) < 0) {
+        this->saveError("zf_attr_alloc error", rc);
+        return false;
+      }
+      zf_attr_set_str(attr_, "interface", interface);
+      zf_attr_set_int(attr_, "reactor_spin_count", 1);
+    }
+
+    if (!this->stack_ && (rc = zf_stack_alloc(attr_, &this->stack_)) < 0) {
+      this->saveError("zf_stack_alloc error", rc);
+      zf_attr_free(attr_);
+      attr_ = nullptr;
+      return false;
+    }
+    return TcpdirectTcpConnection<RecvBufSize>::connect(attr_, server_ip, server_port);
   }
 
 private:
   struct zf_attr* attr_ = nullptr;
-
-  std::string server_ip_;
-  uint16_t server_port_;
-
 };
 
 template<uint32_t RecvBufSize = 4096>
@@ -269,7 +255,7 @@ public:
   using TcpConnection = TcpdirectTcpConnection<RecvBufSize>;
   using TcpConnectionPtr = std::unique_ptr<TcpConnection>;
 
-  bool init(const std::string& interface_name, const std::string& server_ip, uint16_t server_port) {
+  bool init(const char* interface, const char* server_ip, uint16_t server_port) {
     int rc;
     if ((rc = _zf_init()) < 0) {
       saveError("zf_init error", rc);
@@ -281,7 +267,7 @@ public:
       saveError("zf_attr_alloc error", rc);
       return false;
     }
-    zf_attr_set_str(attr, "interface", interface_name.c_str());
+    zf_attr_set_str(attr, "interface", interface);
     zf_attr_set_int(attr, "reactor_spin_count", 1);
 
     if ((rc = zf_stack_alloc(attr, &stack_)) < 0) {
@@ -294,7 +280,7 @@ public:
     memset(&servaddr, 0, sizeof(servaddr));
     servaddr.sin_family = AF_INET; // IPv4
     servaddr.sin_port = htons(server_port);
-    inet_pton(AF_INET, server_ip.data(), &(servaddr.sin_addr));
+    inet_pton(AF_INET, server_ip, &(servaddr.sin_addr));
 
     if ((rc = zftl_listen(stack_, (struct sockaddr*)&servaddr, sizeof(servaddr), attr, &listener_)) < 0) {
       saveError("zftl_listen error", rc);
@@ -317,7 +303,7 @@ public:
     }
   }
 
-  const std::string& getLastError() { return last_error_; };
+  const char* getLastError() { return last_error_; };
 
   ~TcpdirectTcpServer() { close("destruct"); }
 
@@ -340,15 +326,11 @@ public:
 
 private:
   void saveError(const char* msg, int rc) {
-    last_error_ = msg;
-    if (rc < 0) {
-      last_error_ += ": ";
-      last_error_ += strerror(-rc);
-    }
+    snprintf(last_error_, sizeof(last_error_), "%s %s", msg, rc < 0 ? (const char*)strerror(-rc) : "");
   }
 
   struct zf_stack* stack_ = nullptr;
   struct zftl* listener_ = nullptr;
-  std::string last_error_;
+  char last_error_[64] = "";
 };
 

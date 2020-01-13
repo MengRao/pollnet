@@ -29,10 +29,10 @@ int main(int argc, char** argv) {
     cout << "usage: " << argv[0] << " interface dest_ip dest_port [sub_ip]" << endl;
     exit(1);
   }
-  std::string interface = argv[1];
-  std::string dest_ip = argv[2];
+  const char* interface = argv[1];
+  const char* dest_ip = argv[2];
   int dest_port = stoi(argv[3]);
-  std::string sub_ip;
+  const char* sub_ip = nullptr;
   if (argc >= 5) {
     sub_ip = argv[4];
   }

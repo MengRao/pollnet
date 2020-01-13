@@ -31,21 +31,21 @@ SOFTWARE.
 #include <sys/mman.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <string>
+#include <stdio.h>
 
 class EfviReceiver
 {
 public:
-  const std::string& getLastError() { return last_error_; };
+  const char* getLastError() { return last_error_; };
 
 protected:
-  bool init(const std::string& interface) {
+  bool init(const char* interface) {
     int rc;
     if ((rc = ef_driver_open(&dh)) < 0) {
       saveError("ef_driver_open failed", rc);
       return false;
     }
-    if ((rc = ef_pd_alloc_by_name(&pd, dh, interface.c_str(), EF_PD_DEFAULT)) < 0) {
+    if ((rc = ef_pd_alloc_by_name(&pd, dh, interface, EF_PD_DEFAULT)) < 0) {
       saveError("ef_pd_alloc_by_name failed", rc);
       return false;
     }
@@ -90,11 +90,7 @@ protected:
   }
 
   void saveError(const char* msg, int rc) {
-    last_error_ = msg;
-    if (rc < 0) {
-      last_error_ += ": ";
-      last_error_ += strerror(-rc);
-    }
+    snprintf(last_error_, sizeof(last_error_), "%s %s", msg, rc < 0 ? (const char*)strerror(-rc) : "");
   }
 
   void close() {
@@ -127,14 +123,13 @@ protected:
   struct ef_pd pd;
   struct ef_memreg memreg;
   bool buf_mmapped;
-  std::string last_error_;
+  char last_error_[64] = "";
 };
 
 class EfviUdpReceiver : public EfviReceiver
 {
 public:
-  bool init(const std::string& interface, const std::string& dest_ip, uint16_t dest_port,
-            const std::string& subscribe_ip = "") {
+  bool init(const char* interface, const char* dest_ip, uint16_t dest_port, const char* subscribe_ip = nullptr) {
     if (!EfviReceiver::init(interface)) {
       return false;
     }
@@ -145,7 +140,7 @@ public:
     ef_filter_spec filter_spec;
     struct sockaddr_in sa_local;
     sa_local.sin_port = htons(dest_port);
-    inet_pton(AF_INET, dest_ip.c_str(), &(sa_local.sin_addr));
+    inet_pton(AF_INET, dest_ip, &(sa_local.sin_addr));
     ef_filter_spec_init(&filter_spec, EF_FILTER_FLAG_NONE);
     if ((rc = ef_filter_spec_set_ip4_local(&filter_spec, IPPROTO_UDP, sa_local.sin_addr.s_addr, sa_local.sin_port)) <
         0) {
@@ -157,16 +152,15 @@ public:
       return false;
     }
 
-
-    if (subscribe_ip.size()) {
+    if (subscribe_ip) {
       if ((subscribe_fd_ = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         saveError("socket failed", -errno);
         return false;
       }
 
       struct ip_mreq group;
-      inet_pton(AF_INET, subscribe_ip.c_str(), &(group.imr_interface));
-      inet_pton(AF_INET, dest_ip.c_str(), &(group.imr_multiaddr));
+      inet_pton(AF_INET, subscribe_ip, &(group.imr_interface));
+      inet_pton(AF_INET, dest_ip, &(group.imr_multiaddr));
       if (setsockopt(subscribe_fd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*)&group, sizeof(group)) < 0) {
         saveError("setsockopt IP_ADD_MEMBERSHIP failed", -errno);
         return false;
@@ -228,7 +222,7 @@ private:
 class EfviEthReceiver : public EfviReceiver
 {
 public:
-  bool init(const std::string& interface) {
+  bool init(const char* interface) {
     if (!EfviReceiver::init(interface)) {
       return false;
     }

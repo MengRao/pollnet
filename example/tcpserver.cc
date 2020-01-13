@@ -29,8 +29,8 @@ int main(int argc, char** argv) {
     cout << "usage: " << argv[0] << " interface server_ip" << endl;
     exit(1);
   }
-  std::string interface = argv[1];
-  std::string server_ip = argv[2];
+  const char* interface = argv[1];
+  const char* server_ip = argv[2];
 
   TcpServer server;
   if (!server.init(interface, server_ip, 1234)) {

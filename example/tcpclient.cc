@@ -37,15 +37,10 @@ int main(int argc, char** argv) {
     cout << "usage: " << argv[0] << " interface server_ip" << endl;
     exit(1);
   }
-  std::string interface = argv[1];
-  std::string server_ip = argv[2];
+  const char* interface = argv[1];
+  const char* server_ip = argv[2];
 
   TcpClient client;
-  if (!client.init(interface, server_ip, 1234)) {
-    cout << client.getLastError() << endl;
-    return 1;
-  }
-
   Packet pack;
   uint64_t last_connect_time = 0;
   while (running) {
@@ -54,7 +49,7 @@ int main(int argc, char** argv) {
       // retry connecting once per sec
       if (now - last_connect_time < 1000000000) continue;
       last_connect_time = now;
-      if (!client.connect()) {
+      if (!client.connect(interface, server_ip, 1234)) {
         cout << "connect error: " << client.getLastError() << endl;
         continue;
       }

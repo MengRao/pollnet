@@ -32,8 +32,8 @@ SOFTWARE.
 #include <linux/if_packet.h>
 #include <net/if.h>
 #include <arpa/inet.h>
+#include <stdio.h>
 #include <string.h>
-#include <string>
 #include <memory>
 
 template<uint32_t RecvBufSize>
@@ -42,7 +42,7 @@ class SocketTcpConnection
 public:
   ~SocketTcpConnection() { close("destruct"); }
 
-  const std::string& getLastError() { return last_error_; };
+  const char* getLastError() { return last_error_; };
 
   bool isConnected() { return fd_ >= 0; }
 
@@ -69,7 +69,6 @@ public:
     socklen_t addr_len = sizeof(addr);
     return ::getpeername(fd_, (struct sockaddr*)&addr, &addr_len) == 0;
   }
-
 
   void close(const char* reason, bool check_errno = false) {
     if (fd_ >= 0) {
@@ -166,37 +165,24 @@ protected:
   }
 
   void saveError(const char* msg, bool check_errno) {
-    last_error_ = msg;
-    if (check_errno) {
-      last_error_ += ": ";
-      last_error_ += strerror(errno);
-    }
+    snprintf(last_error_, sizeof(last_error_), "%s %s", msg, check_errno ? (const char*)strerror(errno) : "");
   }
 
   int fd_ = -1;
   uint32_t head_;
   uint32_t tail_;
   char recvbuf_[RecvBufSize];
-  std::string last_error_;
+  char last_error_[64] = "";
 };
 
 template<uint32_t RecvBufSize = 4096>
 class SocketTcpClient : public SocketTcpConnection<RecvBufSize>
 {
 public:
-  bool init(const std::string& interface_name, const std::string& server_ip, uint16_t server_port) {
-    server_ip_ = server_ip;
-    server_port_ = server_port;
-    return true;
+  bool connect(const char* interface, const char* server_ip, uint16_t server_port) {
+    return SocketTcpConnection<RecvBufSize>::connect(server_ip, server_port);
   }
 
-  bool connect() {
-    return SocketTcpConnection<RecvBufSize>::connect(server_ip_.data(), server_port_);
-  }
-
-private:
-  std::string server_ip_;
-  uint16_t server_port_;
 };
 
 template<uint32_t RecvBufSize = 4096>
@@ -206,7 +192,7 @@ public:
   using TcpConnection = SocketTcpConnection<RecvBufSize>;
   using TcpConnectionPtr = std::unique_ptr<TcpConnection>;
 
-  bool init(const std::string& interface_name, const std::string& server_ip, uint16_t server_port) {
+  bool init(const char* interface, const char* server_ip, uint16_t server_port) {
     listenfd_ = socket(AF_INET, SOCK_STREAM, 0);
     if (listenfd_ < 0) {
       saveError("socket error");
@@ -227,7 +213,7 @@ public:
 
     struct sockaddr_in local_addr;
     local_addr.sin_family = AF_INET;
-    inet_pton(AF_INET, server_ip.data(), &(local_addr.sin_addr));
+    inet_pton(AF_INET, server_ip, &(local_addr.sin_addr));
     local_addr.sin_port = htons(server_port);
     bzero(&(local_addr.sin_zero), 8);
     if (bind(listenfd_, (struct sockaddr*)&local_addr, sizeof(local_addr)) < 0) {
@@ -250,7 +236,7 @@ public:
     }
   }
 
-  const std::string& getLastError() { return last_error_; };
+  const char* getLastError() { return last_error_; };
 
   ~SocketTcpServer() { close("destruct"); }
 
@@ -282,21 +268,16 @@ public:
   }
 
 private:
-  void saveError(const char* msg) {
-    last_error_ = msg;
-    last_error_ += ": ";
-    last_error_ += strerror(errno);
-  }
+  void saveError(const char* msg) { snprintf(last_error_, sizeof(last_error_), "%s %s", msg, strerror(errno)); }
 
   int listenfd_ = -1;
-  std::string last_error_;
+  char last_error_[64] = "";
 };
 
 class SocketUdpReceiver
 {
 public:
-  bool init(const std::string& interface, const std::string& dest_ip, uint16_t dest_port,
-            const std::string& subscribe_ip = "") {
+  bool init(const char* interface, const char* dest_ip, uint16_t dest_port, const char* subscribe_ip = nullptr) {
     if ((fd_ = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
       saveError("socket error");
       return false;
@@ -316,16 +297,16 @@ public:
     memset(&servaddr, 0, sizeof(servaddr));
     servaddr.sin_family = AF_INET; // IPv4
     servaddr.sin_port = htons(dest_port);
-    inet_pton(AF_INET, dest_ip.c_str(), &(servaddr.sin_addr));
+    inet_pton(AF_INET, dest_ip, &(servaddr.sin_addr));
     if (bind(fd_, (const struct sockaddr*)&servaddr, sizeof(servaddr)) < 0) {
       close("bind failed");
       return false;
     }
 
-    if (subscribe_ip.size()) {
+    if (subscribe_ip) {
       struct ip_mreq group;
-      inet_pton(AF_INET, subscribe_ip.c_str(), &(group.imr_interface));
-      inet_pton(AF_INET, dest_ip.c_str(), &(group.imr_multiaddr));
+      inet_pton(AF_INET, subscribe_ip, &(group.imr_interface));
+      inet_pton(AF_INET, dest_ip, &(group.imr_multiaddr));
 
       if (setsockopt(fd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*)&group, sizeof(group)) < 0) {
         close("setsockopt IP_ADD_MEMBERSHIP failed");
@@ -338,7 +319,7 @@ public:
 
   ~SocketUdpReceiver() { close("destruct"); }
 
-  const std::string& getLastError() { return last_error_; };
+  const char* getLastError() { return last_error_; };
 
   void close(const char* reason) {
     if (fd_ >= 0) {
@@ -371,22 +352,18 @@ public:
   }
 
 private:
-  void saveError(const char* msg) {
-    last_error_ = msg;
-    last_error_ += ": ";
-    last_error_ += strerror(errno);
-  }
+  void saveError(const char* msg) { snprintf(last_error_, sizeof(last_error_), "%s %s", msg, strerror(errno)); }
 
   static const uint32_t RecvBufSize = 1500;
   int fd_ = -1;
   char buf[RecvBufSize];
-  std::string last_error_;
+  char last_error_[64] = "";
 };
 
 class SocketEthReceiver
 {
 public:
-  bool init(const std::string& interface) {
+  bool init(const char* interface) {
     fd_ = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
     if (fd_ < 0) {
       saveError("socket error");
@@ -402,7 +379,7 @@ public:
     struct sockaddr_ll socket_address;
     memset(&socket_address, 0, sizeof(socket_address));
     socket_address.sll_family = PF_PACKET;
-    socket_address.sll_ifindex = if_nametoindex(interface.data());
+    socket_address.sll_ifindex = if_nametoindex(interface);
     socket_address.sll_protocol = htons(ETH_P_ALL);
 
     if (bind(fd_, (struct sockaddr*)&socket_address, sizeof(socket_address)) < 0) {
@@ -414,7 +391,7 @@ public:
 
   ~SocketEthReceiver() { close("destruct"); }
 
-  const std::string& getLastError() { return last_error_; };
+  const char* getLastError() { return last_error_; };
 
   void close(const char* reason) {
     if (fd_ >= 0) {
@@ -435,14 +412,10 @@ public:
   }
 
 private:
-  void saveError(const char* msg) {
-    last_error_ = msg;
-    last_error_ += ": ";
-    last_error_ += strerror(errno);
-  }
+  void saveError(const char* msg) { snprintf(last_error_, sizeof(last_error_), "%s %s", msg, strerror(errno)); }
   static const uint32_t RecvBufSize = 1500;
   int fd_ = -1;
   char buf[RecvBufSize];
-  std::string last_error_;
+  char last_error_[64] = "";
 };
 
