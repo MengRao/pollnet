@@ -29,9 +29,9 @@ class TcpStream
 {
 public:
   // use "0.0.0.0" for wildcard ip and 0 for wildcard port
-  void initFilter(const std::string& src_ip, uint16_t src_port, const std::string& dst_ip, uint16_t dst_port) {
-    inet_pton(AF_INET, src_ip.data(), &filter_src_ip);
-    inet_pton(AF_INET, dst_ip.data(), &filter_dst_ip);
+  void initFilter(const char* src_ip, uint16_t src_port, const char* dst_ip, uint16_t dst_port) {
+    inet_pton(AF_INET, src_ip, &filter_src_ip);
+    inet_pton(AF_INET, dst_ip, &filter_dst_ip);
     filter_src_port = htons(src_port);
     filter_dst_port = htons(dst_port);
   }
