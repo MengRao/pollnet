@@ -351,6 +351,10 @@ public:
     return false;
   }
 
+  bool sendto(const char* data, uint32_t size, const sockaddr_in& dst_addr) {
+    return ::sendto(fd_, data, size, 0, (const struct sockaddr*)&dst_addr, sizeof(dst_addr)) == size;
+  }
+
 private:
   void saveError(const char* msg) { snprintf(last_error_, sizeof(last_error_), "%s %s", msg, strerror(errno)); }
 
