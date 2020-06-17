@@ -321,6 +321,8 @@ public:
 
   const char* getLastError() { return last_error_; };
 
+  bool isClosed() { return fd_ < 0; }
+
   void close(const char* reason) {
     if (fd_ >= 0) {
       saveError(reason);

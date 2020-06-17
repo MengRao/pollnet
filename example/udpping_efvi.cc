@@ -1,8 +1,9 @@
 #include <bits/stdc++.h>
-#include "../Socket.h"
+#include "../Efvi.h"
 #include "timestamp.h"
 #include "Statistic.h"
-using UdpReceiver = SocketUdpReceiver;
+using UdpReceiver = EfviUdpReceiver;
+using UdpSender = EfviUdpSender;
 
 using namespace std;
 
@@ -19,30 +20,33 @@ int main(int argc, char** argv) {
   sigIntHandler.sa_flags = 0;
   sigaction(SIGINT, &sigIntHandler, NULL);
 
-  if (argc < 3) {
-    cout << "usage: " << argv[0] << " dest_ip desp_port [pack_per_sec=1]" << endl;
+  if (argc < 7) {
+    cout << "usage: " << argv[0] << " interface local_ip local_port dest_ip dest_port dest_mac [pack_per_sec=1]"
+         << endl;
     return 1;
   }
-
-  const char* dest_ip = argv[1];
-  int dest_port = stoi(argv[2]);
-
+  const char* interface = argv[1];
+  const char* local_ip = argv[2];
+  int local_port = stoi(argv[3]);
+  const char* dest_ip = argv[4];
+  int dest_port = stoi(argv[5]);
+  const char* dest_mac = argv[6];
   int pack_per_sec = 1;
-  if (argc >= 4) {
-    pack_per_sec = stoi(argv[3]);
+  if (argc >= 8) {
+    pack_per_sec = stoi(argv[7]);
   }
 
   const uint64_t send_interval = 1000000000 / pack_per_sec;
 
-  struct sockaddr_in destaddr;
-  memset(&destaddr, 0, sizeof(destaddr));
-  destaddr.sin_family = AF_INET; // IPv4
-  destaddr.sin_port = htons(dest_port);
-  inet_pton(AF_INET, dest_ip, &(destaddr.sin_addr));
-
   UdpReceiver receiver;
-  if (!receiver.init("", "0.0.0.0", 0)) {
+  UdpSender sender;
+  if (!receiver.init(interface, local_ip, local_port)) {
     cout << receiver.getLastError() << endl;
+    return 1;
+  }
+
+  if (!sender.init(interface, local_ip, local_port, dest_ip, dest_port, dest_mac)) {
+    cout << sender.getLastError() << endl;
     return 1;
   }
 
@@ -70,11 +74,12 @@ int main(int argc, char** argv) {
     if (now - send_data.send_time > send_interval) {
       send_data.send_time = now;
       send_data.seq++;
-      receiver.sendto((const char*)&send_data, sizeof(send_data), destaddr);
+      sender.write((const char*)&send_data, sizeof(send_data));
     }
   }
   sta.print(cout);
 
   return 0;
 }
+
 

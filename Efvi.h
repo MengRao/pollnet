@@ -38,6 +38,8 @@ class EfviReceiver
 public:
   const char* getLastError() { return last_error_; };
 
+  bool isClosed() { return dh < 0; }
+
 protected:
   bool init(const char* interface) {
     int rc;
@@ -58,7 +60,6 @@ protected:
       return false;
     }
 
-
     size_t alloc_size = N_BUF * PKT_BUF_SIZE;
     buf_mmapped = true;
     pkt_bufs = (char*)mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | MAP_HUGETLB, -1, 0);
@@ -70,8 +71,6 @@ protected:
         return false;
       }
     }
-
-
     if ((rc = ef_memreg_alloc(&memreg, dh, &pd, dh, pkt_bufs, alloc_size) < 0)) {
       saveError("ef_memreg_alloc failed", rc);
       return false;
@@ -205,6 +204,7 @@ public:
     int id = EF_EVENT_RX_RQ_ID(evs);
     struct pkt_buf* pkt_buf = (struct pkt_buf*)(pkt_bufs + id * PKT_BUF_SIZE);
     const char* data = (const char*)pkt_buf + udp_prefix_len;
+    src_addr.sin_family = AF_INET;
     src_addr.sin_addr.s_addr = *(uint32_t*)(data - 16);
     src_addr.sin_port = *(uint16_t*)(data - 8);
     uint16_t len = ntohs(*(uint16_t*)(data - 4)) - 8;
@@ -265,4 +265,234 @@ public:
 
 private:
   int rx_prefix_len;
+};
+
+class EfviUdpSender
+{
+public:
+  bool init(const char* interface, const char* local_ip, uint16_t local_port, const char* dest_ip, uint16_t dest_port,
+            const char* dest_mac_addr = nullptr) {
+
+    struct sockaddr_in local_addr;
+    struct sockaddr_in dest_addr;
+    uint8_t local_mac[6];
+    uint8_t dest_mac[6];
+    local_addr.sin_port = htons(local_port);
+    inet_pton(AF_INET, local_ip, &(local_addr.sin_addr));
+    dest_addr.sin_port = htons(dest_port);
+    inet_pton(AF_INET, dest_ip, &(dest_addr.sin_addr));
+
+    if ((0xff & dest_addr.sin_addr.s_addr) < 224) { // unicast
+      if (!dest_mac_addr || strlen(dest_mac_addr) != 12) {
+        saveError("invalid dest_mac_addr", 0);
+        return false;
+      }
+      for (int i = 0; i < 6; ++i) {
+        dest_mac[i] = hexchartoi(dest_mac_addr[2 * i]) * 16 + hexchartoi(dest_mac_addr[2 * i + 1]);
+      }
+    }
+    else { // multicast
+      dest_mac[0] = 0x1;
+      dest_mac[1] = 0;
+      dest_mac[2] = 0x5e;
+      dest_mac[3] = 0x7f & (dest_addr.sin_addr.s_addr >> 8);
+      dest_mac[4] = 0xff & (dest_addr.sin_addr.s_addr >> 16);
+      dest_mac[5] = 0xff & (dest_addr.sin_addr.s_addr >> 24);
+    }
+
+    int rc;
+    if ((rc = ef_driver_open(&dh)) < 0) {
+      saveError("ef_driver_open failed", rc);
+      return false;
+    }
+    if ((rc = ef_pd_alloc_by_name(&pd, dh, interface, EF_PD_DEFAULT)) < 0) {
+      saveError("ef_pd_alloc_by_name failed", rc);
+      return false;
+    }
+
+    int vi_flags = EF_VI_FLAGS_DEFAULT;
+    if ((rc = ef_vi_alloc_from_pd(&vi, dh, &pd, dh, -1, 0, N_BUF + 1, NULL, -1, (enum ef_vi_flags)vi_flags)) < 0) {
+      saveError("ef_vi_alloc_from_pd failed", rc);
+      return false;
+    }
+    ef_vi_get_mac(&vi, dh, local_mac);
+
+    size_t alloc_size = N_BUF * PKT_BUF_SIZE;
+    buf_mmapped = true;
+    pkt_bufs = (char*)mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | MAP_HUGETLB, -1, 0);
+    if (pkt_bufs == MAP_FAILED) {
+      buf_mmapped = false;
+      rc = posix_memalign((void**)&pkt_bufs, 4096, alloc_size);
+      if (rc != 0) {
+        saveError("posix_memalign failed", -rc);
+        return false;
+      }
+    }
+
+    if ((rc = ef_memreg_alloc(&memreg, dh, &pd, dh, pkt_bufs, alloc_size) < 0)) {
+      saveError("ef_memreg_alloc failed", rc);
+      return false;
+    }
+
+    for (int i = 0; i < N_BUF; i++) {
+      struct pkt_buf* pkt = (struct pkt_buf*)(pkt_bufs + i * PKT_BUF_SIZE);
+      pkt->post_addr = ef_memreg_dma_addr(&memreg, i * PKT_BUF_SIZE) + sizeof(ef_addr);
+      init_udp_pkt(&(pkt->eth), local_addr, local_mac, dest_addr, dest_mac);
+    }
+
+    return true;
+  }
+
+  ~EfviUdpSender() { close(); }
+
+  const char* getLastError() { return last_error_; };
+
+  bool isClosed() { return dh < 0; }
+
+  void close() {
+    if (dh >= 0) {
+      ef_driver_close(dh);
+      dh = -1;
+    }
+    if (pkt_bufs) {
+      if (buf_mmapped) {
+        munmap(pkt_bufs, N_BUF * PKT_BUF_SIZE);
+      }
+      else {
+        free(pkt_bufs);
+      }
+      pkt_bufs = nullptr;
+    }
+  }
+
+  bool write(const char* data, uint32_t size) {
+    struct pkt_buf* pkt = (struct pkt_buf*)(pkt_bufs + buf_index_ * PKT_BUF_SIZE);
+    uint32_t frame_len = update_udp_pkt(&(pkt->eth), size);
+    memcpy(pkt + 1, data, size);
+    int rc = ef_vi_transmit(&vi, pkt->post_addr, frame_len, buf_index_);
+    buf_index_ = (buf_index_ + 1) % N_BUF;
+
+    ef_event evs[N_BUF];
+    ef_request_id ids[N_BUF];
+    int events = ef_eventq_poll(&vi, evs, N_BUF);
+    for (int i = 0; i < events; ++i) {
+      if (EF_EVENT_TYPE_TX == EF_EVENT_TYPE(evs[i])) {
+        ef_vi_transmit_unbundle(&vi, &evs[i], ids);
+      }
+    }
+    return rc == 0;
+  }
+
+private:
+  void saveError(const char* msg, int rc) {
+    snprintf(last_error_, sizeof(last_error_), "%s %s", msg, rc < 0 ? (const char*)strerror(-rc) : "");
+  }
+
+  uint8_t hexchartoi(char c) {
+    if (c >= '0' && c <= '9')
+      return c - '0';
+    else if (c >= 'A' && c <= 'F')
+      return c - 'A' + 10;
+    else
+      return 0;
+  }
+
+#pragma pack(push, 1)
+  struct ci_ether_hdr
+  {
+    uint8_t ether_dhost[6];
+    uint8_t ether_shost[6];
+    uint16_t ether_type;
+  };
+
+  struct ci_ip4_hdr
+  {
+    uint8_t ip_ihl_version;
+    uint8_t ip_tos;
+    uint16_t ip_tot_len_be16;
+    uint16_t ip_id_be16;
+    uint16_t ip_frag_off_be16;
+    uint8_t ip_ttl;
+    uint8_t ip_protocol;
+    uint16_t ip_check_be16;
+    uint32_t ip_saddr_be32;
+    uint32_t ip_daddr_be32;
+    /* ...options... */
+  };
+
+  struct ci_udp_hdr
+  {
+    uint16_t udp_source_be16;
+    uint16_t udp_dest_be16;
+    uint16_t udp_len_be16;
+    uint16_t udp_check_be16;
+  };
+
+  struct pkt_buf
+  {
+    ef_addr post_addr;
+    ci_ether_hdr eth;
+    ci_ip4_hdr ip4;
+    ci_udp_hdr udp;
+  };
+#pragma pack(pop)
+
+  void init_udp_pkt(void* buf, struct sockaddr_in& local_addr, uint8_t* local_mac, struct sockaddr_in& dest_addr,
+                    uint8_t* dest_mac) {
+    int ip_len = sizeof(struct ci_ip4_hdr) + sizeof(struct ci_udp_hdr);
+    struct ci_ether_hdr* eth = (struct ci_ether_hdr*)buf;
+    struct ci_ip4_hdr* ip4 = (struct ci_ip4_hdr*)(eth + 1);
+    struct ci_udp_hdr* udp = (struct ci_udp_hdr*)(ip4 + 1);
+
+    eth->ether_type = htons(0x0800);
+    memcpy(eth->ether_shost, local_mac, 6);
+    memcpy(eth->ether_dhost, dest_mac, 6);
+
+    ci_ip4_hdr_init(ip4, 0, ip_len, 0, IPPROTO_UDP, local_addr.sin_addr.s_addr, dest_addr.sin_addr.s_addr);
+    ci_udp_hdr_init(udp, ip4, local_addr.sin_port, dest_addr.sin_port, 0);
+  }
+
+  int update_udp_pkt(void* buf, uint32_t paylen) {
+    struct ci_ether_hdr* eth = (struct ci_ether_hdr*)buf;
+    struct ci_ip4_hdr* ip4 = (struct ci_ip4_hdr*)(eth + 1);
+    struct ci_udp_hdr* udp = (struct ci_udp_hdr*)(ip4 + 1);
+    ip4->ip_tot_len_be16 = htons(28 + paylen);
+    udp->udp_len_be16 = htons(8 + paylen);
+    return 42 + paylen;
+  }
+
+  void ci_ip4_hdr_init(struct ci_ip4_hdr* ip, int opts_len, int tot_len, int id_be16, int protocol, unsigned saddr_be32,
+                       unsigned daddr_be32) {
+#define CI_IP4_IHL_VERSION(ihl) ((4u << 4u) | ((ihl) >> 2u))
+    ip->ip_ihl_version = CI_IP4_IHL_VERSION(sizeof(*ip) + opts_len);
+    ip->ip_tos = 0;
+    ip->ip_tot_len_be16 = htons(tot_len);
+    ip->ip_id_be16 = id_be16;
+    ip->ip_frag_off_be16 = 0;
+    ip->ip_ttl = 64;
+    ip->ip_protocol = protocol;
+    ip->ip_saddr_be32 = saddr_be32;
+    ip->ip_daddr_be32 = daddr_be32;
+    ip->ip_check_be16 = 0;
+  }
+
+  void ci_udp_hdr_init(struct ci_udp_hdr* udp, struct ci_ip4_hdr* ip, unsigned sport_be16, unsigned dport_be16,
+                       int payload_len) {
+    udp->udp_source_be16 = sport_be16;
+    udp->udp_dest_be16 = dport_be16;
+    udp->udp_len_be16 = htons(sizeof(*udp) + payload_len);
+    udp->udp_check_be16 = 0;
+  }
+
+  static const int N_BUF = 8;
+  static const int PKT_BUF_SIZE = 2048;
+  struct ef_vi vi;
+  char* pkt_bufs = nullptr;
+  ef_driver_handle dh = -1;
+  struct ef_pd pd;
+  struct ef_memreg memreg;
+  bool buf_mmapped;
+  uint32_t buf_index_ = 0;
+  uint8_t dest_mac[6];
+  char last_error_[64] = "";
 };
