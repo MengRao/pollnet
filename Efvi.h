@@ -187,11 +187,16 @@ public:
 
     int id = EF_EVENT_RX_RQ_ID(evs);
     struct pkt_buf* pkt_buf = (struct pkt_buf*)(pkt_bufs + id * PKT_BUF_SIZE);
-    const char* data = (const char*)pkt_buf + udp_prefix_len;
-    uint16_t len = ntohs(*(uint16_t*)(data - 4)) - 8;
-    handler(data, len);
+    int type = EF_EVENT_TYPE(evs);
+    bool ret = false;
+    if (type == EF_EVENT_TYPE_RX) {
+      const char* data = (const char*)pkt_buf + udp_prefix_len;
+      uint16_t len = ntohs(*(uint16_t*)(data - 4)) - 8;
+      handler(data, len);
+      ret = true;
+    }
     ef_vi_receive_post(&vi, pkt_buf->post_addr, id);
-    return true;
+    return ret;
   }
 
   template<typename Handler>
@@ -255,11 +260,15 @@ public:
 
     int id = EF_EVENT_RX_RQ_ID(evs);
     struct pkt_buf* pkt_buf = (struct pkt_buf*)(pkt_bufs + id * PKT_BUF_SIZE);
-    const char* data = (const char*)pkt_buf + 64 + rx_prefix_len;
-    uint32_t len = EF_EVENT_RX_BYTES(evs) - rx_prefix_len;
-    handler(data, len);
+    int type = EF_EVENT_TYPE(evs);
+    bool ret = false;
+    if (type == EF_EVENT_TYPE_RX) {
+      const char* data = (const char*)pkt_buf + 64 + rx_prefix_len;
+      uint32_t len = EF_EVENT_RX_BYTES(evs) - rx_prefix_len;
+      handler(data, len);
+    }
     ef_vi_receive_post(&vi, pkt_buf->post_addr, id);
-    return true;
+    return ret;
   }
 
 
