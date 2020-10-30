@@ -307,6 +307,8 @@ public:
 
   ~TcpdirectTcpServer() { close("destruct"); }
 
+  bool isClosed() { return listener_ == nullptr; }
+
   TcpConnectionPtr accept() {
     struct zft* zock;
     zf_reactor_perform(stack_);

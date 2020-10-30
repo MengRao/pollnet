@@ -240,6 +240,8 @@ public:
 
   ~SocketTcpServer() { close("destruct"); }
 
+  bool isClosed() { return listenfd_ < 0; }
+
   TcpConnectionPtr accept() {
     struct sockaddr_in clientaddr;
     socklen_t addr_len = sizeof(clientaddr);
