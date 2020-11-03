@@ -5,7 +5,7 @@
 using UdpReceiver = EfviUdpReceiver;
 #else
 #include "../Socket.h"
-using UdpReceiver = SocketUdpReceiver;
+using UdpReceiver = SocketUdpReceiver<>;
 #endif
 
 using namespace std;

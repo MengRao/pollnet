@@ -276,6 +276,7 @@ private:
   char last_error_[64] = "";
 };
 
+template<uint32_t RecvBufSize = 1500>
 class SocketUdpReceiver
 {
 public:
@@ -362,7 +363,6 @@ public:
 private:
   void saveError(const char* msg) { snprintf(last_error_, sizeof(last_error_), "%s %s", msg, strerror(errno)); }
 
-  static const uint32_t RecvBufSize = 1500;
   int fd_ = -1;
   char buf[RecvBufSize];
   char last_error_[64] = "";

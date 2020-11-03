@@ -2,7 +2,7 @@
 #include "../Socket.h"
 #include "timestamp.h"
 #include "Statistic.h"
-using UdpReceiver = SocketUdpReceiver;
+using UdpReceiver = SocketUdpReceiver<>;
 
 using namespace std;
 

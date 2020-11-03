@@ -1,7 +1,7 @@
 #include <bits/stdc++.h>
 #include "../Socket.h"
 #include "timestamp.h"
-using UdpReceiver = SocketUdpReceiver;
+using UdpReceiver = SocketUdpReceiver<>;
 
 using namespace std;
 
