@@ -322,6 +322,13 @@ public:
 
   ~SocketUdpReceiver() { close("destruct"); }
 
+  uint16_t getLocalPort() {
+    struct sockaddr_in addr;
+    socklen_t addrlen = sizeof(addr);
+    getsockname(fd_, (struct sockaddr*)&addr, &addrlen);
+    return ntohs(addr.sin_port);
+  }
+
   const char* getLastError() { return last_error_; };
 
   bool isClosed() { return fd_ < 0; }
