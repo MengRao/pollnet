@@ -227,7 +227,7 @@ private:
 class EfviEthReceiver : public EfviReceiver
 {
 public:
-  bool init(const char* interface) {
+  bool init(const char* interface, bool promiscuous = false) {
     if (!EfviReceiver::init(interface)) {
       return false;
     }
@@ -237,7 +237,7 @@ public:
     int rc;
     ef_filter_spec fs;
     ef_filter_spec_init(&fs, EF_FILTER_FLAG_NONE);
-    if ((rc = ef_filter_spec_set_port_sniff(&fs, 1)) < 0) {
+    if ((rc = ef_filter_spec_set_port_sniff(&fs, (int)promiscuous)) < 0) {
       saveError("ef_filter_spec_set_port_sniff failed", rc);
       return false;
     }

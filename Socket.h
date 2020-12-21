@@ -378,7 +378,7 @@ private:
 class SocketEthReceiver
 {
 public:
-  bool init(const char* interface) {
+  bool init(const char* interface, bool promiscuous = false) {
     fd_ = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
     if (fd_ < 0) {
       saveError("socket error");
@@ -400,6 +400,16 @@ public:
     if (bind(fd_, (struct sockaddr*)&socket_address, sizeof(socket_address)) < 0) {
       close("bind error");
       return false;
+    }
+
+    if (promiscuous) {
+      struct packet_mreq mreq = {0};
+      mreq.mr_ifindex = if_nametoindex(interface);
+      mreq.mr_type = PACKET_MR_PROMISC;
+      if (setsockopt(fd_, SOL_PACKET, PACKET_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
+        close("setsockopt PACKET_ADD_MEMBERSHIP");
+        return false;
+      }
     }
     return true;
   }
