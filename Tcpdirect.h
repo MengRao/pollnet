@@ -101,27 +101,28 @@ public:
   bool read(Handler handler) {
     struct
     {
-      struct zft_msg msg;
+      char msg[sizeof(struct zft_msg)]; // prevent newer gcc from erroring "flexible array member not at end of struct"
       struct iovec iov;
     } msg;
-    msg.msg.iovcnt = 1;
+    struct zft_msg* zm = (struct zft_msg*)msg.msg;
+    zm->iovcnt = 1;
 
     zf_reactor_perform(stack_);
 
-    zft_zc_recv(zock_, &msg.msg, 0);
-    if (msg.msg.iovcnt == 0) return false;
+    zft_zc_recv(zock_, zm, 0);
+    if (zm->iovcnt == 0) return false;
 
     const char* new_data = (const char*)msg.iov.iov_base;
     uint32_t new_size = msg.iov.iov_len;
 
     if (new_size == 0) {
-      zft_zc_recv_done(zock_, &msg.msg);
+      zft_zc_recv_done(zock_, zm);
       close("remote close");
       return false;
     }
 
     if (new_size + tail_ > RecvBufSize) {
-      zft_zc_recv_done(zock_, &msg.msg);
+      zft_zc_recv_done(zock_, zm);
       close("recv buf full");
       return false;
     }
@@ -151,7 +152,7 @@ public:
       }
     }
     if (zock_) { // this could have been closed
-      zft_zc_recv_done(zock_, &msg.msg);
+      zft_zc_recv_done(zock_, zm);
     }
     return true;
   }
