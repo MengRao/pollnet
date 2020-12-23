@@ -8,6 +8,8 @@ using UdpReceiver = EfviUdpReceiver;
 using UdpReceiver = SocketUdpReceiver<>;
 #endif
 
+#include "timestamp.h"
+
 using namespace std;
 
 volatile bool running = true;
@@ -45,7 +47,10 @@ int main(int argc, char** argv) {
 
   while (running) {
     receiver.recvfrom([](const char* data, uint32_t len, const struct sockaddr_in& addr) {
-      cout << "got data size: " << len << " from " << inet_ntoa(addr.sin_addr) << ":" << ntohs(addr.sin_port) << endl;
+      auto now = getns();
+
+      cout << "now: " << now << ", got data size: " << len << " from " << inet_ntoa(addr.sin_addr) << ":"
+           << ntohs(addr.sin_port) << endl;
     });
   }
 
