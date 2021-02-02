@@ -18,6 +18,22 @@ void my_handler(int s) {
   running = false;
 }
 
+uint64_t midnight_ns = 0;
+
+std::string convertTime(uint64_t ts) {
+  ts -= midnight_ns;
+  int ns = ts % 1000000000;
+  ts /= 1000000000;
+  int sec = ts % 60;
+  ts /= 60;
+  int min = ts % 60;
+  ts /= 60;
+  int hour = ts;
+  std::string ret(18, 0);
+  sprintf((char*)ret.data(), "%02d:%02d:%02d.%09d", hour, min, sec, ns);
+  return ret;
+}
+
 int main(int argc, char** argv) {
   struct sigaction sigIntHandler;
 
@@ -39,6 +55,16 @@ int main(int argc, char** argv) {
     sub_ip = argv[4];
   }
 
+  {
+    time_t rawtime;
+    struct tm* timeinfo;
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+    timeinfo->tm_sec = timeinfo->tm_min = timeinfo->tm_hour = 0;
+    midnight_ns = mktime(timeinfo);
+    midnight_ns *= 1000000000;
+  }
+
   UdpReceiver receiver;
   if (!receiver.init(interface, dest_ip, dest_port, sub_ip)) {
     cout << receiver.getLastError() << endl;
@@ -49,7 +75,7 @@ int main(int argc, char** argv) {
     receiver.recvfrom([](const char* data, uint32_t len, const struct sockaddr_in& addr) {
       auto now = getns();
 
-      cout << "now: " << now << ", got data size: " << len << " from " << inet_ntoa(addr.sin_addr) << ":"
+      cout << "now: " << convertTime(now) << ", got data size: " << len << " from " << inet_ntoa(addr.sin_addr) << ":"
            << ntohs(addr.sin_port) << endl;
     });
   }
