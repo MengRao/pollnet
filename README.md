@@ -87,13 +87,11 @@ bool accept2(TcpConnection& conn);
 Note that TcpClient and TcpServer has a template parameter `uint32_t RecvBufSize = 4096`, RecvBufSize must be as least twice the largest application packet its connection is going to receive.
 
 ## UdpReceiver
-Unlike its tcp counterpart, udp lib only provides receiver side, this is mainly because tcpdirect api is not friendly to udp sending:  local port and remote ip/port must be bound to each instance, which means you can't send to multiple destinations using one udp object.
-
 UdpReceiver provides Socket and Efvi versions, with multicast support:
 ```c++
-// interface_name can be empty for Socket version.
+// interface can be empty for Socket version.
 // specify subscribe_ip (to the ip of the interface) to join multicast group if multicast msgs are to be received
-bool init(const char* interface, const char* dest_ip, uint16_t dest_port, const char* subscribe_ip = nullptr);
+bool init(const char* interface, const char* dest_ip, uint16_t dest_port, const char* subscribe_ip = "");
 
 // receive new data without blocking
 // Handler is of signature void (const char* data, uint32_t size).
@@ -104,6 +102,16 @@ bool read(Handler handler);
 // Handler is of signature void (const char* data, uint32_t size, const struct sockaddr_in& addr), where addr is the remote address.
 template<typename Handler>
 bool recvfrom(Handler handler);
+```
+
+## UdpSender
+UdpSender provides Socket and Efvi versions, with multicast support:
+```c++
+// interface can be empty for Socket version.
+bool init(const char* interface, const char* local_ip, uint16_t local_port, const char* dest_ip, uint16_t dest_port);
+
+// send one udp packet with payload
+bool write(const char* payload, uint32_t size);
 ```
 
 ## EthReceiver and TcpStream
