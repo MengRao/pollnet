@@ -25,10 +25,12 @@ SOFTWARE.
 #include <etherfabric/vi.h>
 #include <etherfabric/pd.h>
 #include <etherfabric/memreg.h>
+#include <etherfabric/capabilities.h>
 #include <arpa/inet.h>
 #include <sys/shm.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <net/if.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -128,7 +130,7 @@ protected:
 class EfviUdpReceiver : public EfviReceiver
 {
 public:
-  bool init(const char* interface, const char* dest_ip, uint16_t dest_port, const char* subscribe_ip = nullptr) {
+  bool init(const char* interface, const char* dest_ip, uint16_t dest_port, const char* subscribe_ip = "") {
     if (!EfviReceiver::init(interface)) {
       return false;
     }
@@ -151,7 +153,7 @@ public:
       return false;
     }
 
-    if (subscribe_ip) {
+    if (subscribe_ip[0]) {
       if ((subscribe_fd_ = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         saveError("socket failed", -errno);
         return false;
@@ -279,8 +281,7 @@ private:
 class EfviUdpSender
 {
 public:
-  bool init(const char* interface, const char* local_ip, uint16_t local_port, const char* dest_ip, uint16_t dest_port,
-            const char* dest_mac_addr = nullptr) {
+  bool init(const char* interface, const char* local_ip, uint16_t local_port, const char* dest_ip, uint16_t dest_port) {
 
     struct sockaddr_in local_addr;
     struct sockaddr_in dest_addr;
@@ -292,12 +293,14 @@ public:
     inet_pton(AF_INET, dest_ip, &(dest_addr.sin_addr));
 
     if ((0xff & dest_addr.sin_addr.s_addr) < 224) { // unicast
-      if (!dest_mac_addr || strlen(dest_mac_addr) != 12) {
+      char dest_mac_addr[64];
+      if (!getMacFromARP(interface, dest_ip, dest_mac_addr)) return false;
+      if (strlen(dest_mac_addr) != 17) {
         saveError("invalid dest_mac_addr", 0);
         return false;
       }
       for (int i = 0; i < 6; ++i) {
-        dest_mac[i] = hexchartoi(dest_mac_addr[2 * i]) * 16 + hexchartoi(dest_mac_addr[2 * i + 1]);
+        dest_mac[i] = hexchartoi(dest_mac_addr[3 * i]) * 16 + hexchartoi(dest_mac_addr[3 * i + 1]);
       }
     }
     else { // multicast
@@ -320,6 +323,13 @@ public:
     }
 
     int vi_flags = EF_VI_FLAGS_DEFAULT;
+    int ifindex = if_nametoindex(interface);
+    unsigned long capability_val = 0;
+    if (ef_vi_capabilities_get(dh, ifindex, EF_VI_CAP_CTPIO, &capability_val) == 0 && capability_val) {
+      use_ctpio = true;
+      vi_flags |= EF_VI_TX_CTPIO;
+    }
+
     if ((rc = ef_vi_alloc_from_pd(&vi, dh, &pd, dh, -1, 0, N_BUF + 1, NULL, -1, (enum ef_vi_flags)vi_flags)) < 0) {
       saveError("ef_vi_alloc_from_pd failed", rc);
       return false;
@@ -349,6 +359,14 @@ public:
       init_udp_pkt(&(pkt->eth), local_addr, local_mac, dest_addr, dest_mac);
     }
 
+    uint16_t* ip4 = (uint16_t*)&((struct pkt_buf*)pkt_bufs)->ip4;
+    ipsum_cache = 0;
+    for (int i = 0; i < 10; i++) {
+      ipsum_cache += ip4[i];
+    }
+    ipsum_cache = (ipsum_cache >> 16u) + (ipsum_cache & 0xffff);
+    ipsum_cache += (ipsum_cache >> 16u);
+
     return true;
   }
 
@@ -376,9 +394,25 @@ public:
 
   bool write(const char* data, uint32_t size) {
     struct pkt_buf* pkt = (struct pkt_buf*)(pkt_bufs + buf_index_ * PKT_BUF_SIZE);
-    uint32_t frame_len = update_udp_pkt(&(pkt->eth), size);
+    struct ci_ether_hdr* eth = &pkt->eth;
+    struct ci_ip4_hdr* ip4 = (struct ci_ip4_hdr*)(eth + 1);
+    struct ci_udp_hdr* udp = (struct ci_udp_hdr*)(ip4 + 1);
+    uint16_t iplen = htons(28 + size);
+    ip4->ip_tot_len_be16 = iplen;
+    udp->udp_len_be16 = htons(8 + size);
     memcpy(pkt + 1, data, size);
-    int rc = ef_vi_transmit(&vi, pkt->post_addr, frame_len, buf_index_);
+    uint32_t frame_len = 42 + size;
+    int rc;
+    if (use_ctpio) {
+      uint32_t ipsum = ipsum_cache + iplen;
+      ipsum += (ipsum >> 16u);
+      ip4->ip_check_be16 = ~ipsum & 0xffff;
+      ef_vi_transmit_ctpio(&vi, &pkt->eth, frame_len, 40);
+      rc = ef_vi_transmit_ctpio_fallback(&vi, pkt->post_addr, frame_len, buf_index_);
+    }
+    else {
+      rc = ef_vi_transmit(&vi, pkt->post_addr, frame_len, buf_index_);
+    }
     buf_index_ = (buf_index_ + 1) % N_BUF;
 
     ef_event evs[N_BUF];
@@ -393,6 +427,29 @@ public:
   }
 
 private:
+  bool getMacFromARP(const char* interface, const char* dest_ip, char* dest_mac) {
+    FILE* arp_file = fopen("/proc/net/arp", "r");
+    if (!arp_file) {
+      saveError("Can't open /proc/net/arp", -errno);
+      return false;
+    }
+    static const int LINE_LEN = 1024;
+    char header[1024];
+    if (!fgets(header, sizeof(header), arp_file)) {
+      saveError("Invalid file /proc/net/arp", 0);
+      return false;
+    }
+    char ip[64], hw[64], device[64];
+    while (3 == fscanf(arp_file, "%63s %*s %*s %63s %*s %63s", ip, hw, device)) {
+      if (!strcmp(ip, dest_ip) && !strcmp(interface, device)) {
+        strcpy(dest_mac, hw);
+        return true;
+      }
+    }
+    saveError("Can't find dest ip from arp cache, please ping dest ip first", 0);
+    return false;
+  }
+
   void saveError(const char* msg, int rc) {
     snprintf(last_error_, sizeof(last_error_), "%s %s", msg, rc < 0 ? (const char*)strerror(-rc) : "");
   }
@@ -448,7 +505,6 @@ private:
 
   void init_udp_pkt(void* buf, struct sockaddr_in& local_addr, uint8_t* local_mac, struct sockaddr_in& dest_addr,
                     uint8_t* dest_mac) {
-    int ip_len = sizeof(struct ci_ip4_hdr) + sizeof(struct ci_udp_hdr);
     struct ci_ether_hdr* eth = (struct ci_ether_hdr*)buf;
     struct ci_ip4_hdr* ip4 = (struct ci_ip4_hdr*)(eth + 1);
     struct ci_udp_hdr* udp = (struct ci_udp_hdr*)(ip4 + 1);
@@ -457,15 +513,19 @@ private:
     memcpy(eth->ether_shost, local_mac, 6);
     memcpy(eth->ether_dhost, dest_mac, 6);
 
-    ci_ip4_hdr_init(ip4, 0, ip_len, 0, IPPROTO_UDP, local_addr.sin_addr.s_addr, dest_addr.sin_addr.s_addr);
+    ci_ip4_hdr_init(ip4, 0, 0, 0, IPPROTO_UDP, local_addr.sin_addr.s_addr, dest_addr.sin_addr.s_addr);
     ci_udp_hdr_init(udp, ip4, local_addr.sin_port, dest_addr.sin_port, 0);
   }
 
-  int update_udp_pkt(void* buf, uint32_t paylen) {
+  inline int update_udp_pkt(void* buf, uint32_t paylen) {
     struct ci_ether_hdr* eth = (struct ci_ether_hdr*)buf;
     struct ci_ip4_hdr* ip4 = (struct ci_ip4_hdr*)(eth + 1);
     struct ci_udp_hdr* udp = (struct ci_udp_hdr*)(ip4 + 1);
-    ip4->ip_tot_len_be16 = htons(28 + paylen);
+    uint16_t iplen = htons(28 + paylen);
+    ip4->ip_tot_len_be16 = iplen;
+    uint32_t ipsum = ipsum_cache + iplen;
+    ipsum += (ipsum >> 16u);
+    ip4->ip_check_be16 = ~ipsum & 0xffff;
     udp->udp_len_be16 = htons(8 + paylen);
     return 42 + paylen;
   }
@@ -493,15 +553,16 @@ private:
     udp->udp_check_be16 = 0;
   }
 
-  static const int N_BUF = 8;
+  static const int N_BUF = 4;
   static const int PKT_BUF_SIZE = 2048;
   struct ef_vi vi;
-  char* pkt_bufs = nullptr;
   ef_driver_handle dh = -1;
   struct ef_pd pd;
   struct ef_memreg memreg;
-  bool buf_mmapped;
+  char* pkt_bufs = nullptr;
+  bool use_ctpio = false;
+  uint32_t ipsum_cache;
   uint32_t buf_index_ = 0;
-  uint8_t dest_mac[6];
+  bool buf_mmapped;
   char last_error_[64] = "";
 };

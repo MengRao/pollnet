@@ -1,7 +1,15 @@
 #include <bits/stdc++.h>
+
+#ifdef USE_SOLARFLARE
+#include "../Efvi.h"
+using UdpReceiver = EfviUdpReceiver;
+using UdpSender = EfviUdpSender;
+#else
 #include "../Socket.h"
-#include "timestamp.h"
 using UdpReceiver = SocketUdpReceiver<>;
+using UdpSender = SocketUdpSender;
+#endif
+#include "timestamp.h"
 
 using namespace std;
 
@@ -18,23 +26,29 @@ int main(int argc, char** argv) {
   sigIntHandler.sa_flags = 0;
   sigaction(SIGINT, &sigIntHandler, NULL);
 
-  if (argc < 3) {
-    cout << "usage: " << argv[0] << " local_ip local_port" << endl;
+  if (argc < 6) {
+    cout << "usage: " << argv[0] << " interface local_ip local_port dest_ip dest_port" << endl;
     return 1;
   }
-
-  const char* local_ip = argv[1];
-  int local_port = stoi(argv[2]);
+  const char* interface = argv[1];
+  const char* local_ip = argv[2];
+  int local_port = stoi(argv[3]);
+  const char* dest_ip = argv[4];
+  int dest_port = stoi(argv[5]);
 
   UdpReceiver receiver;
-  if (!receiver.init("", local_ip, local_port)) {
+  UdpSender sender;
+  if (!receiver.init(interface, local_ip, local_port)) {
     cout << receiver.getLastError() << endl;
+    return 1;
+  }
+  if (!sender.init(interface, local_ip, local_port + 1, dest_ip, dest_port)) {
+    cout << sender.getLastError() << endl;
     return 1;
   }
 
   while (running) {
-    receiver.recvfrom(
-      [&](const char* data, uint32_t len, const struct sockaddr_in& addr) { receiver.sendto(data, len, addr); });
+    receiver.read([&](const char* data, uint32_t len) { sender.write(data, len); });
   }
 
   return 0;

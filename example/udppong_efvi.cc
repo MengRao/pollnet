@@ -19,8 +19,8 @@ int main(int argc, char** argv) {
   sigIntHandler.sa_flags = 0;
   sigaction(SIGINT, &sigIntHandler, NULL);
 
-  if (argc < 7) {
-    cout << "usage: " << argv[0] << " interface local_ip local_port dest_ip dest_port dest_mac" << endl;
+  if (argc < 6) {
+    cout << "usage: " << argv[0] << " interface local_ip local_port dest_ip dest_port" << endl;
     return 1;
   }
   const char* interface = argv[1];
@@ -28,7 +28,6 @@ int main(int argc, char** argv) {
   int local_port = stoi(argv[3]);
   const char* dest_ip = argv[4];
   int dest_port = stoi(argv[5]);
-  const char* dest_mac = argv[6];
 
   UdpReceiver receiver;
   UdpSender sender;
@@ -36,7 +35,7 @@ int main(int argc, char** argv) {
     cout << receiver.getLastError() << endl;
     return 1;
   }
-  if (!sender.init(interface, local_ip, local_port, dest_ip, dest_port, dest_mac)) {
+  if (!sender.init(interface, local_ip, local_port, dest_ip, dest_port)) {
     cout << sender.getLastError() << endl;
     return 1;
   }

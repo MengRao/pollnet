@@ -280,7 +280,7 @@ template<uint32_t RecvBufSize = 1500>
 class SocketUdpReceiver
 {
 public:
-  bool init(const char* interface, const char* dest_ip, uint16_t dest_port, const char* subscribe_ip = nullptr) {
+  bool init(const char* interface, const char* dest_ip, uint16_t dest_port, const char* subscribe_ip = "") {
     if ((fd_ = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
       saveError("socket error");
       return false;
@@ -306,7 +306,7 @@ public:
       return false;
     }
 
-    if (subscribe_ip) {
+    if (subscribe_ip[0]) {
       struct ip_mreq group;
       inet_pton(AF_INET, subscribe_ip, &(group.imr_interface));
       inet_pton(AF_INET, dest_ip, &(group.imr_multiaddr));
@@ -372,6 +372,75 @@ private:
 
   int fd_ = -1;
   char buf[RecvBufSize];
+  char last_error_[64] = "";
+};
+
+class SocketUdpSender
+{
+public:
+  bool init(const char* interface, const char* local_ip, uint16_t local_port, const char* dest_ip, uint16_t dest_port) {
+    if ((fd_ = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+      saveError("socket error");
+      return false;
+    }
+    int flags = fcntl(fd_, F_GETFL, 0);
+    if (fcntl(fd_, F_SETFL, flags | O_NONBLOCK) < 0) {
+      close("fcntl O_NONBLOCK error");
+      return false;
+    }
+
+    struct sockaddr_in localaddr;
+    memset(&localaddr, 0, sizeof(localaddr));
+    localaddr.sin_family = AF_INET; // IPv4
+    localaddr.sin_port = htons(local_port);
+    inet_pton(AF_INET, local_ip, &(localaddr.sin_addr));
+    if (bind(fd_, (const struct sockaddr*)&localaddr, sizeof(localaddr)) < 0) {
+      close("bind failed");
+      return false;
+    }
+
+    struct sockaddr_in destaddr;
+    memset(&destaddr, 0, sizeof(destaddr));
+    destaddr.sin_family = AF_INET; // IPv4
+    destaddr.sin_port = htons(dest_port);
+    inet_pton(AF_INET, dest_ip, &(destaddr.sin_addr));
+    if (::connect(fd_, (struct sockaddr*)&destaddr, sizeof(destaddr)) < 0) {
+      close("connect error");
+      return false;
+    }
+
+    return true;
+  }
+
+  ~SocketUdpSender() { close("destruct"); }
+
+  uint16_t getLocalPort() {
+    struct sockaddr_in addr;
+    socklen_t addrlen = sizeof(addr);
+    getsockname(fd_, (struct sockaddr*)&addr, &addrlen);
+    return ntohs(addr.sin_port);
+  }
+
+  const char* getLastError() { return last_error_; };
+
+  bool isClosed() { return fd_ < 0; }
+
+  void close(const char* reason) {
+    if (fd_ >= 0) {
+      saveError(reason);
+      ::close(fd_);
+      fd_ = -1;
+    }
+  }
+
+  bool write(const char* data, uint32_t size) {
+    return ::send(fd_, data, size, 0) == size;
+  }
+
+private:
+  void saveError(const char* msg) { snprintf(last_error_, sizeof(last_error_), "%s %s", msg, strerror(errno)); }
+
+  int fd_ = -1;
   char last_error_[64] = "";
 };
 
