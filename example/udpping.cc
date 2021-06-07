@@ -68,8 +68,9 @@ int main(int argc, char** argv) {
     send_data.arr[i] = i;
   }
 
-  Statistic<uint64_t> sta;
+  Statistic<uint64_t> sta, write_sta;
   sta.reserve(10000);
+  write_sta.reserve(10000);
 
   uint64_t last_recv_seq = 0;
   uint64_t miss_seq_cnt = 0;
@@ -93,9 +94,14 @@ int main(int argc, char** argv) {
       send_data.send_time = now;
       send_data.seq++;
       sender.write((const char*)&send_data, sizeof(send_data));
+      uint64_t after = getns();
+      write_sta.add(after - now);
     }
   }
   sta.print(cout);
+
+  cout << "write latency: " << endl;
+  write_sta.print(cout);
 
   cout << "miss_seq_cnt: " << miss_seq_cnt << ", bad_cnt: " << bad_cnt << endl;
 

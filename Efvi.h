@@ -294,7 +294,13 @@ public:
 
     if ((0xff & dest_addr.sin_addr.s_addr) < 224) { // unicast
       char dest_mac_addr[64];
-      if (!getMacFromARP(interface, dest_ip, dest_mac_addr)) return false;
+      if (!getMacFromARP(interface, dest_ip, dest_mac_addr)) {
+        char gw[64];
+        if (!getGW(dest_ip, gw) || !getMacFromARP(interface, gw, dest_mac_addr)) {
+          saveError("Can't find dest ip from arp cache, please ping dest ip first", 0);
+          return false;
+        }
+      }
       // std::cout << "dest_mac_addr: " << dest_mac_addr << std::endl;
       if (strlen(dest_mac_addr) != 17) {
         saveError("invalid dest_mac_addr", 0);
@@ -438,16 +444,33 @@ private:
     char header[1024];
     if (!fgets(header, sizeof(header), arp_file)) {
       saveError("Invalid file /proc/net/arp", 0);
+      fclose(arp_file);
       return false;
     }
     char ip[64], hw[64], device[64];
     while (3 == fscanf(arp_file, "%63s %*s %*s %63s %*s %63s", ip, hw, device)) {
       if (!strcmp(ip, dest_ip) && !strcmp(interface, device)) {
         strcpy(dest_mac, hw);
+        fclose(arp_file);
         return true;
       }
     }
-    saveError("Can't find dest ip from arp cache, please ping dest ip first", 0);
+    fclose(arp_file);
+    return false;
+  }
+
+  bool getGW(const char* ip, char* gw) {
+    char buf[1024];
+    sprintf(buf, "ip route get %s", ip);
+    FILE* pipe = popen(buf, "r");
+    if (!pipe) return false;
+    while (fgets(buf, sizeof(buf), pipe)) {
+      if (sscanf(buf, "%*s via %s", gw) == 1) {
+        fclose(pipe);
+        return true;
+      }
+    }
+    fclose(pipe);
     return false;
   }
 
