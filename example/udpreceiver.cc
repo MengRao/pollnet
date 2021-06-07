@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
   const char* interface = argv[1];
   const char* dest_ip = argv[2];
   int dest_port = stoi(argv[3]);
-  const char* sub_ip = nullptr;
+  const char* sub_ip = "";
   if (argc >= 5) {
     sub_ip = argv[4];
   }

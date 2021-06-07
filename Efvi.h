@@ -295,6 +295,7 @@ public:
     if ((0xff & dest_addr.sin_addr.s_addr) < 224) { // unicast
       char dest_mac_addr[64];
       if (!getMacFromARP(interface, dest_ip, dest_mac_addr)) return false;
+      // std::cout << "dest_mac_addr: " << dest_mac_addr << std::endl;
       if (strlen(dest_mac_addr) != 17) {
         saveError("invalid dest_mac_addr", 0);
         return false;
@@ -459,6 +460,8 @@ private:
       return c - '0';
     else if (c >= 'A' && c <= 'F')
       return c - 'A' + 10;
+    else if (c >= 'a' && c <= 'f')
+      return c - 'a' + 10;
     else
       return 0;
   }
@@ -537,7 +540,7 @@ private:
     ip->ip_tos = 0;
     ip->ip_tot_len_be16 = htons(tot_len);
     ip->ip_id_be16 = id_be16;
-    ip->ip_frag_off_be16 = 0;
+    ip->ip_frag_off_be16 = 0x0040;
     ip->ip_ttl = 64;
     ip->ip_protocol = protocol;
     ip->ip_saddr_be32 = saddr_be32;

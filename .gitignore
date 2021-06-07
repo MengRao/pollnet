@@ -2,9 +2,9 @@ tcpclient
 tcpserver
 tcpsniffer
 udpreceiver
+udpreceiver_efvi
 udpping
 udppong
 udpping_efvi
 udppong_efvi
-udpreceiver_old
 sync.sh
