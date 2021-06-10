@@ -461,7 +461,7 @@ private:
 
   bool getGW(const char* ip, char* gw) {
     char buf[1024];
-    sprintf(buf, "ip route get %s", ip);
+    sprintf(buf, "/usr/sbin/ip route get %s", ip);
     FILE* pipe = popen(buf, "r");
     if (!pipe) return false;
     while (fgets(buf, sizeof(buf), pipe)) {
