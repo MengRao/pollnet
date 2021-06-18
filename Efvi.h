@@ -579,7 +579,7 @@ private:
     udp->udp_check_be16 = 0;
   }
 
-  static const int N_BUF = 4;
+  static const int N_BUF = 16;
   static const int PKT_BUF_SIZE = 2048;
   struct ef_vi vi;
   ef_driver_handle dh = -1;
