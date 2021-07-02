@@ -440,7 +440,6 @@ private:
       saveError("Can't open /proc/net/arp", -errno);
       return false;
     }
-    static const int LINE_LEN = 1024;
     char header[1024];
     if (!fgets(header, sizeof(header), arp_file)) {
       saveError("Invalid file /proc/net/arp", 0);
