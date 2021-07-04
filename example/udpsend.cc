@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
     pack_per_sec = stoi(argv[6]);
   }
 
-  const uint64_t send_interval = 1000000000 / pack_per_sec;
+  const int64_t send_interval = 1000000000 / pack_per_sec;
 
   UdpSender sender;
 

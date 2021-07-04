@@ -100,7 +100,7 @@ public:
     int flags = MSG_NOSIGNAL;
     if (more) flags |= MSG_MORE;
     int sent = ::send(fd_, data, size, flags);
-    if (sent != size) {
+    if (sent != (int)size) {
       close("send error", true);
       return false;
     }
