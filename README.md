@@ -144,6 +144,14 @@ bool handlePacket(const char* data, uint32_t size, Handler handler);
 ```
 Note that TcpStream has a template parameter `WaitForResend = false`, which indicates whether to wait for resend data once data drop is detected. If set to true, use will get intact tcp stream. But sometimes this is impossible because e.g. switch could drop packets on mirror port which would never be resent. Setting WaitForResend to false adds packets drop tolerance and also timeliness for new data handling. Once packet drop is detected, any remaining data is also discarded and new data is feed to user immediately, thus user must be ready for handling stream of data where segments could be missing between different calls of `handlePacket`.
 
+## EFVI Ping
+An EFVI implemented ping program intended to provide lower rtt latency and higher precision(in nanoseconds).
+Usage: `./efvi_ping dest_ip [pack_per_sec=1]`, note that root permission is required. Example: 
+
+![image](https://user-images.githubusercontent.com/11496526/135202450-65a8435d-70fa-45e6-a2a5-fb4abf0636a3.png)
+
+
+
 ## How to switch between different implementations
 In examples, this is done via macro selections so that tcpdirect/efvi headers will not be included to prevent from compile errors on machines where onload is not installed.
 ```c++
