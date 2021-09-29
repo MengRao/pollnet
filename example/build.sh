@@ -11,4 +11,4 @@ g++ -O3 -Wall udpping.cc -o udpping $SOLARFLARE_OPT
 g++ -O3 -Wall udppong.cc -o udppong $SOLARFLARE_OPT
 g++ -O3 -Wall udprecv.cc -o udprecv $SOLARFLARE_OPT
 g++ -O3 -Wall udpsend.cc -o udpsend $SOLARFLARE_OPT
-#g++ -O3 -Wall efvi_ping.cc -o efvi_ping $SOLARFLARE_OPT
+#g++ -O3 -Wall efvi_ping.cc -o efvi_ping -lonload_zf -lciul1
