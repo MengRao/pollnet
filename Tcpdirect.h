@@ -68,7 +68,8 @@ public:
     }
   }
 
-  bool write(const void* data, uint32_t size, bool more = false) {
+  bool write(const void* data_, uint32_t size, bool more = false) {
+    const uint8_t* data = (const uint8_t*)data_;
     int flags = 0;
     if (more) flags |= MSG_MORE;
     do {
