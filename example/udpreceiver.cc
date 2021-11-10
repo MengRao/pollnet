@@ -72,7 +72,7 @@ int main(int argc, char** argv) {
   }
 
   while (running) {
-    receiver.recvfrom([](const char* data, uint32_t len, const struct sockaddr_in& addr) {
+    receiver.recvfrom([](const uint8_t* data, uint32_t len, const struct sockaddr_in& addr) {
       auto now = getns();
 
       cout << "now: " << convertTime(now) << ", got data size: " << len << " from " << inet_ntoa(addr.sin_addr) << ":"

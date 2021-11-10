@@ -47,9 +47,9 @@ int main(int argc, char** argv) {
   stream.initFilter(src_ip, src_port, dst_ip, dst_port);
 
   while (running) {
-    receiver.read([&](const char* eth_data, uint32_t eth_size) {
+    receiver.read([&](const uint8_t* eth_data, uint32_t eth_size) {
       if (stream.filterPacket(eth_data, eth_size)) {
-        stream.handlePacket(eth_data, eth_size, [](const char* tcp_data, uint32_t tcp_size) {
+        stream.handlePacket(eth_data, eth_size, [](const uint8_t* tcp_data, uint32_t tcp_size) {
           cout << "got tcp payload size: " << tcp_size << endl;
           return 0;
         });

@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
     }
     auto it = conns.begin();
     while (it != conns.end()) {
-      (*it)->read([&](const char* data, uint32_t size) {
+      (*it)->read([&](const uint8_t* data, uint32_t size) {
         // simply echo data back
         (*it)->writeNonblock(data, size);
         return 0;

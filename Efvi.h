@@ -64,7 +64,8 @@ protected:
 
     size_t alloc_size = N_BUF * PKT_BUF_SIZE;
     buf_mmapped = true;
-    pkt_bufs = (char*)mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | MAP_HUGETLB, -1, 0);
+    pkt_bufs =
+      (uint8_t*)mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | MAP_HUGETLB, -1, 0);
     if (pkt_bufs == MAP_FAILED) {
       buf_mmapped = false;
       rc = posix_memalign((void**)&pkt_bufs, 4096, alloc_size);
@@ -118,7 +119,7 @@ protected:
   };
 
   struct ef_vi vi;
-  char* pkt_bufs = nullptr;
+  uint8_t* pkt_bufs = nullptr;
 
   ef_driver_handle dh = -1;
   struct ef_pd pd;
@@ -192,7 +193,7 @@ public:
     int type = EF_EVENT_TYPE(evs);
     bool ret = false;
     if (type == EF_EVENT_TYPE_RX) {
-      const char* data = (const char*)pkt_buf + udp_prefix_len;
+      const uint8_t* data = (const uint8_t*)pkt_buf + udp_prefix_len;
       uint16_t len = ntohs(*(uint16_t*)(data - 4)) - 8;
       handler(data, len);
       ret = true;
@@ -210,7 +211,7 @@ public:
 
     int id = EF_EVENT_RX_RQ_ID(evs);
     struct pkt_buf* pkt_buf = (struct pkt_buf*)(pkt_bufs + id * PKT_BUF_SIZE);
-    const char* data = (const char*)pkt_buf + udp_prefix_len;
+    const uint8_t* data = (const uint8_t*)pkt_buf + udp_prefix_len;
     src_addr.sin_family = AF_INET;
     src_addr.sin_addr.s_addr = *(uint32_t*)(data - 16);
     src_addr.sin_port = *(uint16_t*)(data - 8);
@@ -265,7 +266,7 @@ public:
     int type = EF_EVENT_TYPE(evs);
     bool ret = false;
     if (type == EF_EVENT_TYPE_RX) {
-      const char* data = (const char*)pkt_buf + 64 + rx_prefix_len;
+      const uint8_t* data = (const uint8_t*)pkt_buf + 64 + rx_prefix_len;
       uint32_t len = EF_EVENT_RX_BYTES(evs) - rx_prefix_len;
       handler(data, len);
     }
@@ -345,7 +346,8 @@ public:
 
     size_t alloc_size = N_BUF * PKT_BUF_SIZE;
     buf_mmapped = true;
-    pkt_bufs = (char*)mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | MAP_HUGETLB, -1, 0);
+    pkt_bufs =
+      (uint8_t*)mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | MAP_HUGETLB, -1, 0);
     if (pkt_bufs == MAP_FAILED) {
       buf_mmapped = false;
       rc = posix_memalign((void**)&pkt_bufs, 4096, alloc_size);
@@ -399,7 +401,7 @@ public:
     }
   }
 
-  bool write(const char* data, uint32_t size) {
+  bool write(const uint8_t* data, uint32_t size) {
     struct pkt_buf* pkt = (struct pkt_buf*)(pkt_bufs + buf_index_ * PKT_BUF_SIZE);
     struct ci_ether_hdr* eth = &pkt->eth;
     struct ci_ip4_hdr* ip4 = (struct ci_ip4_hdr*)(eth + 1);
@@ -584,7 +586,7 @@ private:
   ef_driver_handle dh = -1;
   struct ef_pd pd;
   struct ef_memreg memreg;
-  char* pkt_bufs = nullptr;
+  uint8_t* pkt_bufs = nullptr;
   bool use_ctpio = false;
   uint32_t ipsum_cache;
   uint32_t buf_index_ = 0;

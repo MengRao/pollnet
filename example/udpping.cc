@@ -60,13 +60,15 @@ int main(int argc, char** argv) {
   {
     uint64_t seq = 0;
     uint64_t send_time = 0;
-    long arr[10];
+    // long arr[10];
   };
 
   Data send_data;
+  /*
   for (int i = 0; i < 10; i++) {
     send_data.arr[i] = i;
   }
+  */
 
   Statistic<uint64_t> sta, write_sta;
   sta.reserve(10000);
@@ -76,7 +78,7 @@ int main(int argc, char** argv) {
   uint64_t miss_seq_cnt = 0;
   uint64_t bad_cnt = 0;
   while (running) {
-    receiver.read([&](const char* data, uint32_t len) {
+    receiver.read([&](const uint8_t* data, uint32_t len) {
       uint64_t now = getns();
       if (len < sizeof(Data)) {
         bad_cnt++;
@@ -93,7 +95,7 @@ int main(int argc, char** argv) {
     if (now - send_data.send_time > send_interval) {
       send_data.send_time = now;
       send_data.seq++;
-      sender.write((const char*)&send_data, sizeof(send_data));
+      sender.write((const uint8_t*)&send_data, sizeof(send_data));
       uint64_t after = getns();
       write_sta.add(after - now);
     }

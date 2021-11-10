@@ -68,7 +68,7 @@ public:
     }
   }
 
-  bool write(const char* data, uint32_t size, bool more = false) {
+  bool write(const uint8_t* data, uint32_t size, bool more = false) {
     int flags = 0;
     if (more) flags |= MSG_MORE;
     do {
@@ -87,7 +87,7 @@ public:
     return true;
   }
 
-  bool writeNonblock(const char* data, uint32_t size, bool more = false) {
+  bool writeNonblock(const uint8_t* data, uint32_t size, bool more = false) {
     int flags = 0;
     if (more) flags |= MSG_MORE;
     if (zft_send_single(zock_, data, size, flags) != size) {
@@ -101,7 +101,8 @@ public:
   bool read(Handler handler) {
     struct
     {
-      char msg[sizeof(struct zft_msg)]; // prevent newer gcc from erroring "flexible array member not at end of struct"
+      uint8_t
+        msg[sizeof(struct zft_msg)]; // prevent newer gcc from erroring "flexible array member not at end of struct"
       struct iovec iov;
     } msg;
     struct zft_msg* zm = (struct zft_msg*)msg.msg;
@@ -112,7 +113,7 @@ public:
     zft_zc_recv(zock_, zm, 0);
     if (zm->iovcnt == 0) return false;
 
-    const char* new_data = (const char*)msg.iov.iov_base;
+    const uint8_t* new_data = (const uint8_t*)msg.iov.iov_base;
     uint32_t new_size = msg.iov.iov_len;
 
     if (new_size == 0) {
@@ -205,7 +206,7 @@ protected:
 
   uint32_t head_;
   uint32_t tail_;
-  char recvbuf_[RecvBufSize];
+  uint8_t recvbuf_[RecvBufSize];
   char last_error_[64] = "";
 };
 

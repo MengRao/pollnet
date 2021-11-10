@@ -59,9 +59,9 @@ int main(int argc, char** argv) {
     if (now - pack.ts >= 1000000000) {
       pack.val++;
       pack.ts = now;
-      client.writeNonblock((const char*)&pack, sizeof(pack));
+      client.writeNonblock((const uint8_t*)&pack, sizeof(pack));
     }
-    client.read([](const char* data, uint32_t size) {
+    client.read([](const uint8_t* data, uint32_t size) {
       auto now = getns();
       while (size >= sizeof(Packet)) {
         const Packet& recv_pack = *(const Packet*)data;

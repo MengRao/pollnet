@@ -78,7 +78,7 @@ public:
     }
   }
 
-  bool write(const char* data, uint32_t size, bool more = false) {
+  bool write(const uint8_t* data, uint32_t size, bool more = false) {
     int flags = MSG_NOSIGNAL;
     if (more) flags |= MSG_MORE;
     do {
@@ -96,7 +96,7 @@ public:
     return true;
   }
 
-  bool writeNonblock(const char* data, uint32_t size, bool more = false) {
+  bool writeNonblock(const uint8_t* data, uint32_t size, bool more = false) {
     int flags = MSG_NOSIGNAL;
     if (more) flags |= MSG_MORE;
     int sent = ::send(fd_, data, size, flags);
@@ -171,7 +171,7 @@ protected:
   int fd_ = -1;
   uint32_t head_;
   uint32_t tail_;
-  char recvbuf_[RecvBufSize];
+  uint8_t recvbuf_[RecvBufSize];
   char last_error_[64] = "";
 };
 
@@ -363,7 +363,7 @@ public:
     return false;
   }
 
-  bool sendto(const char* data, uint32_t size, const sockaddr_in& dst_addr) {
+  bool sendto(const uint8_t* data, uint32_t size, const sockaddr_in& dst_addr) {
     return ::sendto(fd_, data, size, 0, (const struct sockaddr*)&dst_addr, sizeof(dst_addr)) == size;
   }
 
@@ -371,7 +371,7 @@ private:
   void saveError(const char* msg) { snprintf(last_error_, sizeof(last_error_), "%s %s", msg, strerror(errno)); }
 
   int fd_ = -1;
-  char buf[RecvBufSize];
+  uint8_t buf[RecvBufSize];
   char last_error_[64] = "";
 };
 
@@ -433,9 +433,7 @@ public:
     }
   }
 
-  bool write(const char* data, uint32_t size) {
-    return ::send(fd_, data, size, 0) == size;
-  }
+  bool write(const uint8_t* data, uint32_t size) { return ::send(fd_, data, size, 0) == size; }
 
 private:
   void saveError(const char* msg) { snprintf(last_error_, sizeof(last_error_), "%s %s", msg, strerror(errno)); }
@@ -509,7 +507,7 @@ private:
   void saveError(const char* msg) { snprintf(last_error_, sizeof(last_error_), "%s %s", msg, strerror(errno)); }
   static const uint32_t RecvBufSize = 1500;
   int fd_ = -1;
-  char buf[RecvBufSize];
+  uint8_t buf[RecvBufSize];
   char last_error_[64] = "";
 };
 

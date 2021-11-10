@@ -36,7 +36,7 @@ public:
     filter_dst_port = htons(dst_port);
   }
 
-  bool filterPacket(const char* data, uint32_t size) {
+  bool filterPacket(const uint8_t* data, uint32_t size) {
     EtherHeader& ether_header = *(EtherHeader*)data;
     IpHeader& ip_header = *(IpHeader*)(data + IPHeaderPos);
     TcpHeader& tcp_header = *(TcpHeader*)(data + TcpHeaderPos);
@@ -51,7 +51,7 @@ public:
   }
 
   template<typename Handler>
-  bool handlePacket(const char* data, uint32_t size, Handler handler) {
+  bool handlePacket(const uint8_t* data, uint32_t size, Handler handler) {
     IpHeader& ip_header = *(IpHeader*)(data + IPHeaderPos);
     TcpHeader& tcp_header = *(TcpHeader*)(data + TcpHeaderPos);
 
@@ -68,7 +68,7 @@ public:
     }
 
     uint32_t header_len = sizeof(IpHeader) + tcp_header.dataOffset * 4;
-    const char* new_data = data + IPHeaderPos + header_len;
+    const uint8_t* new_data = data + IPHeaderPos + header_len;
     uint32_t new_size = ntohs(ip_header.totalLength) - header_len;
     uint32_t loc = seq - buf_seq; // location of seq in buffer
     uint32_t loc_end = loc + new_size;
@@ -221,5 +221,5 @@ private:
   static const int MAX_SEG = 5;
   uint32_t n_seg;
   std::pair<uint32_t, uint32_t> segs[MAX_SEG];
-  char recvbuf[BUFSIZE];
+  uint8_t recvbuf[BUFSIZE];
 };

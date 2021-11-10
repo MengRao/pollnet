@@ -48,7 +48,7 @@ int main(int argc, char** argv) {
   }
 
   while (running) {
-    receiver.read([&](const char* data, uint32_t len) { sender.write(data, len); });
+    receiver.read([&](const uint8_t* data, uint32_t len) { sender.write(data, len); });
   }
 
   return 0;

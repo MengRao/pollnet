@@ -51,7 +51,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  char data[201];
+  uint8_t data[201];
   data[200] = 0;
 
   int64_t send_time = 0;

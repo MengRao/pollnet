@@ -51,7 +51,7 @@ int main(int argc, char** argv) {
   int miss_cnt = 0;
   int cnt = 0;
   while (running) {
-    receiver.read([&](const char* data, uint32_t len) {
+    receiver.read([&](const uint8_t* data, uint32_t len) {
       cnt++;
       // cout << "data: " << data << endl;
       if (len != 201) {

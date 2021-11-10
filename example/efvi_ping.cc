@@ -366,7 +366,7 @@ int main(int argc, char** argv) {
   sta.reserve(10000);
 
   while (running) {
-    receiver.read([&](const char* eth_data, uint32_t eth_size) {
+    receiver.read([&](const uint8_t* eth_data, uint32_t eth_size) {
       struct ci_ether_hdr* eth = (struct ci_ether_hdr*)eth_data;
       struct ci_ip4_hdr* ip4 = (struct ci_ip4_hdr*)(eth + 1);
       struct ci_icmp* icmp = (struct ci_icmp*)(ip4 + 1);
