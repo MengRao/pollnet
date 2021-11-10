@@ -68,7 +68,7 @@ public:
     }
   }
 
-  bool write(const uint8_t* data, uint32_t size, bool more = false) {
+  bool write(const void* data, uint32_t size, bool more = false) {
     int flags = 0;
     if (more) flags |= MSG_MORE;
     do {
@@ -87,7 +87,7 @@ public:
     return true;
   }
 
-  bool writeNonblock(const uint8_t* data, uint32_t size, bool more = false) {
+  bool writeNonblock(const void* data, uint32_t size, bool more = false) {
     int flags = 0;
     if (more) flags |= MSG_MORE;
     if (zft_send_single(zock_, data, size, flags) != size) {

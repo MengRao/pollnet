@@ -78,7 +78,7 @@ public:
     }
   }
 
-  bool write(const uint8_t* data, uint32_t size, bool more = false) {
+  bool write(const void* data, uint32_t size, bool more = false) {
     int flags = MSG_NOSIGNAL;
     if (more) flags |= MSG_MORE;
     do {
@@ -96,7 +96,7 @@ public:
     return true;
   }
 
-  bool writeNonblock(const uint8_t* data, uint32_t size, bool more = false) {
+  bool writeNonblock(const void* data, uint32_t size, bool more = false) {
     int flags = MSG_NOSIGNAL;
     if (more) flags |= MSG_MORE;
     int sent = ::send(fd_, data, size, flags);
@@ -363,7 +363,7 @@ public:
     return false;
   }
 
-  bool sendto(const uint8_t* data, uint32_t size, const sockaddr_in& dst_addr) {
+  bool sendto(const void* data, uint32_t size, const sockaddr_in& dst_addr) {
     return ::sendto(fd_, data, size, 0, (const struct sockaddr*)&dst_addr, sizeof(dst_addr)) == size;
   }
 
@@ -433,7 +433,7 @@ public:
     }
   }
 
-  bool write(const uint8_t* data, uint32_t size) { return ::send(fd_, data, size, 0) == size; }
+  bool write(const void* data, uint32_t size) { return ::send(fd_, data, size, 0) == size; }
 
 private:
   void saveError(const char* msg) { snprintf(last_error_, sizeof(last_error_), "%s %s", msg, strerror(errno)); }

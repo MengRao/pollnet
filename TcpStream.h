@@ -36,7 +36,8 @@ public:
     filter_dst_port = htons(dst_port);
   }
 
-  bool filterPacket(const uint8_t* data, uint32_t size) {
+  bool filterPacket(const void* data_, uint32_t size) {
+    const uint8_t* data = (const uint8_t*)data_;
     EtherHeader& ether_header = *(EtherHeader*)data;
     IpHeader& ip_header = *(IpHeader*)(data + IPHeaderPos);
     TcpHeader& tcp_header = *(TcpHeader*)(data + TcpHeaderPos);
@@ -51,7 +52,8 @@ public:
   }
 
   template<typename Handler>
-  bool handlePacket(const uint8_t* data, uint32_t size, Handler handler) {
+  bool handlePacket(const void* data_, uint32_t size, Handler handler) {
+    const uint8_t* data = (const uint8_t*)data_;
     IpHeader& ip_header = *(IpHeader*)(data + IPHeaderPos);
     TcpHeader& tcp_header = *(TcpHeader*)(data + TcpHeaderPos);
 

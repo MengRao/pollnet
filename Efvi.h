@@ -401,7 +401,7 @@ public:
     }
   }
 
-  bool write(const uint8_t* data, uint32_t size) {
+  bool write(const void* data, uint32_t size) {
     struct pkt_buf* pkt = (struct pkt_buf*)(pkt_bufs + buf_index_ * PKT_BUF_SIZE);
     struct ci_ether_hdr* eth = &pkt->eth;
     struct ci_ip4_hdr* ip4 = (struct ci_ip4_hdr*)(eth + 1);
