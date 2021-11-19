@@ -210,6 +210,3 @@ Efvitcp is not thread safe, user should have the same thread polling TcpClient/T
 
 ## Pollnet Interface
 Efvitcp also provides two wrapper classes `EfviTcpClient` and `EfviTcpServer` in `EfviTcp.h` using the same interface as pollnet tcp client/server.
-
-## Examples
-Check [test](https://github.com/MengRao/efvitcp/tree/main/test) for a tcp echo client/server code example.
