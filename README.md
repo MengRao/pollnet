@@ -81,7 +81,11 @@ void onRecvTimeout(Conn& conn){}
 // when new tcp data arrives.
 // return the remaining data size that user can't handle currently, which will be returned in the next onTcpData with newly arrived data
 uint32_t onTcpData(Conn& conn, const uint8_t* data, uint32_t size){}
+
+// when the connection is closed
+void onTcpDisconnect(Conn& conn){}
 ```
+User can save the reference to the conn after it's established for sending data etc..., but for TcpServer user should not use it after it's been closed because the same connection object will be reused for new connections.
 
 TcpClient has one additional callback function for `poll`:
 ```c++
