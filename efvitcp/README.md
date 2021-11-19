@@ -58,7 +58,7 @@ else {
 ```
 Note that `connect()` not returning an error doesn't mean the connection is established: it just indicate that a Syn is sent out without error(as it's non-blocking), we still need to wait for the 3-way handshake to complete. As efvitcp won't create a thread internally, we need to `poll()` it in the user thread, and as `poll()` is also non-blocking, we need to call it **repetitively**. 
 
-`poll()` is the core of muliplexing in the lib, all sorts of events will be triggers by this single call including whether or not the `connect()` is successful. How can user retrieve the events from `poll()`? A class with event handler functions(non-virtual) need to be defined and an instance be provided as the argument of `poll()`, and it'll call those user defined callback functions when events occur. For completing a connection establishment, three events could be triggered:
+`poll()` is the core of muliplexing in the lib, all sorts of events will be triggered by this single call including whether or not the `connect()` is successful. How can user retrieve the events from `poll()`? A class with event handler functions(non-virtual) need to be defined and an instance be provided as the argument of `poll()`, and it'll call those user defined callback functions when events occur. For completing a connection establishment, three events could be triggered:
 
 ```c++
 struct MyClient {
