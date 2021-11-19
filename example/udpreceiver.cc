@@ -1,6 +1,6 @@
 #include <bits/stdc++.h>
 
-#ifdef USE_SOLARFLARE
+#ifdef USE_EFVI
 #include "../Efvi.h"
 using UdpReceiver = EfviUdpReceiver;
 #else

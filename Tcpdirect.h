@@ -113,7 +113,6 @@ protected:
       return false;
     }
 
-    close("reconnect");
     if ((rc = zft_connect(tcp_handle, (struct sockaddr*)&server_addr, sizeof(server_addr), &zock_)) < 0) {
       saveError("zft_connect error", rc);
       zft_handle_free(tcp_handle);
@@ -280,7 +279,7 @@ public:
       if (now < next_conn_ts_) return;
       next_conn_ts_ = now + Conf::ConnRetrySec;
       if (!this->connect(attr_, server_addr_)) {
-        handler.onTcpConnectFailed(*this);
+        handler.onTcpConnectFailed();
         return;
       }
       handler.onTcpConnected(*this);

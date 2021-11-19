@@ -11,12 +11,17 @@ struct ClientConf
   };
 };
 
-#ifdef USE_SOLARFLARE
+#ifdef USE_TCPDIRECT
 #include "../Tcpdirect.h"
 using TcpClient = TcpdirectTcpClient<ClientConf>;
 #else
+#ifdef USE_EFVI
+#include "../efvitcp/EfviTcp.h"
+using TcpClient = EfviTcpClient<ClientConf>;
+#else
 #include "../Socket.h"
 using TcpClient = SocketTcpClient<ClientConf>;
+#endif
 #endif
 
 #include "timestamp.h"
@@ -53,12 +58,15 @@ int main(int argc, char** argv) {
   }
   const char* interface = argv[1];
   const char* server_ip = argv[2];
-  client.init(interface, server_ip, 1234);
+  if (!client.init(interface, server_ip, 1234)) {
+    cout << client.getLastError() << endl;
+    exit(1);
+  }
 
   while (running) {
     struct
     {
-      void onTcpConnectFailed(TcpClient::Conn& conn) { cout << "onTcpConnectFailed, " << conn.getLastError() << endl; }
+      void onTcpConnectFailed() { cout << "onTcpConnectFailed, " << client.getLastError() << endl; }
       void onTcpConnected(TcpClient::Conn& conn) { cout << "onTcpConnected" << endl; }
       void onSendTimeout(TcpClient::Conn& conn) {
         pack.val++;

@@ -1,7 +1,7 @@
 #include <bits/stdc++.h>
 #include "../TcpStream.h"
 
-#ifdef USE_SOLARFLARE
+#ifdef USE_EFVI
 #include "../Efvi.h"
 using EthReceiver = EfviEthReceiver;
 #else

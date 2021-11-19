@@ -212,7 +212,7 @@ public:
       if (now < next_conn_ts_) return;
       next_conn_ts_ = now + Conf::ConnRetrySec;
       if (!this->connect(server_addr_)) {
-        handler.onTcpConnectFailed(*this);
+        handler.onTcpConnectFailed();
         return;
       }
       handler.onTcpConnected(*this);

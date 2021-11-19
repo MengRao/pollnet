@@ -1,14 +1,16 @@
 set -e
 
-#SOLARFLARE_OPT="-DUSE_SOLARFLARE -lonload_zf -lciul1"
-SOLARFLARE_OPT=""
+#TCPDIRECT_OPT="-DUSE_TCPDIRECT -lonload_zf"
+#EFVI_OPT="-DUSE_EFVI -lciul1"
 
-g++ -O3 -Wall tcpclient.cc -o tcpclient $SOLARFLARE_OPT
-g++ -O3 -Wall tcpserver.cc -o tcpserver $SOLARFLARE_OPT
-g++ -O3 -Wall udpreceiver.cc -o udpreceiver $SOLARFLARE_OPT
-g++ -O3 -Wall tcpsniffer.cc -o tcpsniffer $SOLARFLARE_OPT
-g++ -O3 -Wall udpping.cc -o udpping $SOLARFLARE_OPT
-g++ -O3 -Wall udppong.cc -o udppong $SOLARFLARE_OPT
-g++ -O3 -Wall udprecv.cc -o udprecv $SOLARFLARE_OPT
-g++ -O3 -Wall udpsend.cc -o udpsend $SOLARFLARE_OPT
-#g++ -O3 -Wall efvi_ping.cc -o efvi_ping -lonload_zf -lciul1
+g++ -O3 -Wall tcpclient.cc -o tcpclient $TCPDIRECT_OPT $EFVI_OPT
+g++ -O3 -Wall tcpserver.cc -o tcpserver $TCPDIRECT_OPT $EFVI_OPT
+g++ -O3 -Wall udpreceiver.cc -o udpreceiver $EFVI_OPT
+g++ -O3 -Wall tcpsniffer.cc -o tcpsniffer $EFVI_OPT
+g++ -O3 -Wall udpping.cc -o udpping $EFVI_OPT
+g++ -O3 -Wall udppong.cc -o udppong $EFVI_OPT
+g++ -O3 -Wall udprecv.cc -o udprecv $EFVI_OPT
+g++ -O3 -Wall udpsend.cc -o udpsend $EFVI_OPT
+#g++ -O3 -Wall efvi_ping.cc -o efvi_ping -lciul1
+#g++ -O3 -Wall efvitcp_client.cc -o efvitcp_client -lciul1
+#g++ -O3 -Wall efvitcp_server.cc -o efvitcp_server -lciul1

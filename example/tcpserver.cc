@@ -13,12 +13,17 @@ struct ServerConf
   };
 };
 
-#ifdef USE_SOLARFLARE
+#ifdef USE_TCPDIRECT
 #include "../Tcpdirect.h"
 using TcpServer = TcpdirectTcpServer<ServerConf>;
 #else
+#ifdef USE_EFVI
+#include "../efvitcp/EfviTcp.h"
+using TcpServer = EfviTcpServer<ServerConf>;
+#else
 #include "../Socket.h"
 using TcpServer = SocketTcpServer<ServerConf>;
+#endif
 #endif
 
 using namespace std;

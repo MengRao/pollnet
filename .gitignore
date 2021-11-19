@@ -10,4 +10,6 @@ udppong_efvi
 udprecv
 udpsend
 efvi_ping
+efvitcp_client
+efvitcp_server
 sync.sh
