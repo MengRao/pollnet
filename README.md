@@ -4,7 +4,7 @@ Pollnet contains some header only network libs for tcp, udp or ethernet data pro
 Another important feature of pollnet is that it supports low level apis for solarflare network adapters: Tcpdirect and Efvi, providing the same interface as its Socket counterparts, allowing the user to easily switch between Socket and Tcpdirect/Evfi implementations depending on whether or not solarflare NIC is being used.
 
 ## TCP
-TcpConnection, TcpClient and TcpServer classes are implemented in all Socket, Tcpdirect and Efvi versions.
+TcpConnection, TcpClient and TcpServer classes are implemented in Socket, Tcpdirect and Efvi versions.
 
 TcpConnection can't be created directly by the user, but user can access it's reference in client/server callback function parameter as onXXX(TcpClient::Conn& conn) or onXXX(TcpServer::Conn& conn). TcpConnection has below functions:
 ```C++
