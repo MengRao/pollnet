@@ -6,7 +6,7 @@ Another important feature of pollnet is that it supports low level apis for sola
 ## TCP
 TcpConnection, TcpClient and TcpServer classes are implemented in Socket, Tcpdirect and Efvi versions.
 
-TcpConnection can't be created directly by the user, but user can access it's reference in client/server callback function parameter as onXXX(TcpClient::Conn& conn) or onXXX(TcpServer::Conn& conn). TcpConnection has below functions:
+TcpConnection can't be created directly by the user, but user can access its reference in client/server's callback function parameter as onXXX(TcpClient::Conn& conn) or onXXX(TcpServer::Conn& conn). TcpConnection has below functions:
 ```C++
 // get last error msg for printing/logging
 const char* getLastError();
