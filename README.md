@@ -4,10 +4,9 @@ Pollnet contains some header only network libs for tcp, udp or ethernet data pro
 Another important feature of pollnet is that it supports low level apis for solarflare network adapters: Tcpdirect and Efvi, providing the same interface as its Socket counterparts, allowing the user to easily switch between Socket and Tcpdirect/Evfi implementations depending on whether or not solarflare NIC is being used.
 
 ## TCP
-TcpConnection, TcpClient and TcpServer classes are implemented in both Socket and Tcpdirect versions.
+TcpConnection, TcpClient and TcpServer classes are implemented in all Socket, Tcpdirect and Efvi versions.
 
-
-TcpConnection:
+TcpConnection can't be created directly by the user, but user can access it's reference in client/server callback function parameter as onXXX(TcpClient::Conn& conn) or onXXX(TcpServer::Conn& conn). TcpConnection has below functions:
 ```C++
 // get last error msg for printing/logging
 const char* getLastError();
@@ -27,64 +26,77 @@ bool write(const char* data, uint32_t size);
 
 // send data without retry, thus wouldn't block. If data can not be accepted immediately it simply closes the connection.
 bool writeNonblock(const char* data, uint32_t size);
-
-// receive new data without blocking
-// Handler is of signature uint32_t (const char* data, uint32_t size), where the return value is remaining size which will be prepended to new received data in the next read handler
-// return true if new data is received and handler has been called
-template<typename Handler>
-bool read(Handler handler);
 ```
+One thing to note is that pollnet won't print or log any error msg internally, which requires the user to fetch it by `getLastError()` whenever an error occurred.
 
-The most interesting part here is the `read` function, it takes a template parameter handler which can be a lambda function. Below is a simple example showing how to read and handle fix-sized application packets:
+
+TcpClient and TcpServer are template classes that take a parameter for configuration, for example:
 ```c++
-struct Packet{
-...
+struct ClientConf
+{
+  static const uint32_t RecvBufSize = 4096; // receive buffer size for each connection
+  static const uint32_t ConnRetrySec = 5; // connect retry periods in seconds
+  static const uint32_t SendTimeoutSec = 1; // send timeout in seconds for each connection, set to 0 to disable timeout
+  static const uint32_t RecvTimeoutSec = 3; // receive timeout in seconds for each connection, set to 0 to disable timeout
+  struct UserData // user defined data attached to each connection
+  {
+      int foo;
+      std::string bar;
+  };
 };
+using TcpClient = SocketTcpClient<ClientConf>;
 
-connection.read([](const char* data, uint32_t size) {
-      while (size >= sizeof(Packet)) {
-        const Packet& pack = *(const Packet*)data;
-        // handle pack...
-        
-        data += sizeof(Packet);
-        size -= sizeof(Packet);
-      }
-      return size;
-    });
+struct ServerConf
+{
+  static const uint32_t RecvBufSize = 4096; // receive buffer size for each connection
+  static const uint32_t MaxConns = 10;   // max number of connections the server can support
+  static const uint32_t SendTimeoutSec = 0;  // send timeout in seconds for each connection, set to 0 to disable timeout
+  static const uint32_t RecvTimeoutSec = 10;  // receive timeout in seconds for each connection, set to 0 to disable timeout
+  struct UserData    // user defined data attached to each connection
+  {
+    int foo;
+    std::string bar;
+  };
+};
+using TcpServer = SocketTcpServer<ServerConf>;
+
 ```
-
-Another thing to note is that pollnet won't print or log any error msg internally, which requires the user to fetch it by `getLastError()` whenever an error occurred.
-
-
-TcpClient is a derived class from TcpConnection:
+TcpClient and TcpServer also have similar user interfaces: first call `init()` to initialize the it:
 ```c++
-
-// connect to server, may block.
 // interface can be empty for Socket version
-// return true if isConnected()
-// else call getLastError()
-bool connect(const char* interface, const char* server_ip, uint16_t server_port);
+bool init(const char* interface, const char* server_ip, uint16_t server_port);
 ```
 
-TcpServer creates new TcpConnections instead:
+Then call `poll(Handler& handler)` repetitively to get it running, in which `TcpClient` automatically tries connecting and `TcpServer` tries accepting. `poll()` takes an user defined object for handling network/timer events, all defined callback functions(non-virtual) in both classes are as follows:
 ```c++
+// When a new connection is estasblished
+void onTcpConnected(Conn& conn){}
 
-// interface_name can be empty for Socket version
-// call getLastError() if return false
-bool init(const char* interface_name, const char* server_ip, uint16_t server_port);
+// When user has not sent any data to the connection for some period(defined in Conf::SendTimeoutSec)
+void onSendTimeout(Conn& conn){}
 
-using TcpConnectionPtr = std::unique_ptr<TcpConnection>;
+// When the connection has not received any data for some period(defined in Conf::RecvTimeoutSec)
+void onRecvTimeout(Conn& conn){}
 
-// try accepting new connections, non-blocking.
-// if no new connection it returns TcpConnectionPtr().
-TcpConnectionPtr accept();
-
-// similar to accept, but new connection is set to the parameter: a closed connection
-// return true if new connection is accepted
-bool accept2(TcpConnection& conn);
+// when new tcp data arrives.
+// return the remaining data size that user can't handle currently, which will be returned in the next onTcpData with newly arrived data
+uint32_t onTcpData(Conn& conn, const uint8_t* data, uint32_t size){}
 ```
 
-Note that TcpClient and TcpServer has a template parameter `uint32_t RecvBufSize = 4096`, RecvBufSize must be as least twice the largest application packet its connection is going to receive.
+TcpClient has one additional callback function for `poll`:
+```c++
+// when connect failed, it will retry connecting after some period(defined in Conf::ConnRetrySec)
+void onTcpConnectFailed(){}
+```
+While TcpServer has one additional function itself:
+```c++
+// get total active connection number
+uint32_t getConnCnt();
+```
+
+Note that Efvi tcp implementation provides more functionalities for finer controls, check [efvitcp](https://github.com/MengRao/pollnet/tree/master/efvitcp) for details.
+
+Check [tcpclient.cc](https://github.com/MengRao/pollnet/blob/master/example/tcpclient.cc) and [tcpserver.cc](https://github.com/MengRao/pollnet/blob/master/example/tcpserver.cc) for code examples.
 
 ## UdpReceiver
 UdpReceiver provides Socket and Efvi versions, with multicast support:
@@ -156,12 +168,28 @@ Usage: `./efvi_ping dest_ip [pack_per_sec=1]`, note that root permission is requ
 ## How to switch between different implementations
 In examples, this is done via macro selections so that tcpdirect/efvi headers will not be included to prevent from compile errors on machines where onload is not installed.
 ```c++
-#ifdef USE_SOLARFLARE
+struct ClientConf
+{
+  static const uint32_t RecvBufSize = 4096;
+  static const uint32_t ConnRetrySec = 5;
+  static const uint32_t SendTimeoutSec = 1;
+  static const uint32_t RecvTimeoutSec = 3;
+  struct UserData
+  {
+  };
+};
+
+#ifdef USE_TCPDIRECT
 #include "../Tcpdirect.h"
-using TcpClient = TcpdirectTcpClient<>;
+using TcpClient = TcpdirectTcpClient<ClientConf>;
+#else
+#ifdef USE_EFVI
+#include "../efvitcp/EfviTcp.h"
+using TcpClient = EfviTcpClient<ClientConf>;
 #else
 #include "../Socket.h"
-using TcpClient = SocketTcpClient<>;
+using TcpClient = SocketTcpClient<ClientConf>;
+#endif
 #endif
 
 ```
@@ -177,7 +205,10 @@ public:
   ...
   
 private:
-  TcpClient<4096> client;
+  struct ClientConf{
+    ...
+  };
+  TcpClient<ClientConf> client;
   ...
 };
 ...
@@ -185,10 +216,14 @@ private:
 #include "MyApp.h"
 #include "pollnet/Tcpdirect.h"
 #include "pollnet/Socket.h"
+#include "pollnet/efvitcp/EfviTcp.h"
 
 BaseApp* app;
-if(Config()::useSolarFlare()){
+if(Config()::useTcpdirect()){
   app = new MyApp<TcpdirectTcpClient>();
+}
+else if(Config()::useEfvi()){
+  app = new MyApp<EfviClient>();
 }
 else {
   app = new MyApp<SocketTcpClient>();
@@ -198,5 +233,3 @@ app->run();
 
 ## Thread safety
 Pollnet libs are not designed to be thread safe, mainly because tcpdirect/efvi are not thread safe. 
-
-Additional note for `TcpdirectTcpServer`: different TcpConnections accepted from the same server can't be accessed in multiple threads without locking, because they're sharing the same stack managed by the server, for the same reason, all connections must be closed before the server itself is closed.
