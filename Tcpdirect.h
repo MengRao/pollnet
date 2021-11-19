@@ -27,6 +27,7 @@ SOFTWARE.
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <zf/zf.h>
+#include <time.h>
 #include <memory>
 
 namespace {
@@ -44,8 +45,8 @@ int _zf_init() {
 }
 } // namespace
 
-template<uint32_t RecvBufSize>
-class TcpdirectTcpConnection
+template<typename Conf>
+class TcpdirectTcpConnection : public Conf::UserData
 {
 public:
   ~TcpdirectTcpConnection() { close("destruct"); }
@@ -85,6 +86,7 @@ public:
       data += sent;
       size -= sent;
     } while (size != 0);
+    if (Conf::SendTimeoutSec) send_ts_ = time(0);
     return true;
   }
 
@@ -95,7 +97,51 @@ public:
       close("zft_send_single failed");
       return false;
     }
+    if (Conf::SendTimeoutSec) send_ts_ = time(0);
     return true;
+  }
+
+protected:
+  template<typename ServerConf>
+  friend class TcpdirectTcpServer;
+
+  bool connect(struct zf_attr* attr, struct sockaddr_in& server_addr) {
+    int rc;
+    struct zft_handle* tcp_handle;
+    if ((rc = zft_alloc(stack_, attr, &tcp_handle)) < 0) {
+      saveError("zft_alloc error", rc);
+      return false;
+    }
+
+    close("reconnect");
+    if ((rc = zft_connect(tcp_handle, (struct sockaddr*)&server_addr, sizeof(server_addr), &zock_)) < 0) {
+      saveError("zft_connect error", rc);
+      zft_handle_free(tcp_handle);
+      return false;
+    }
+    while (zft_state(zock_) == TCP_SYN_SENT) zf_reactor_perform(stack_);
+    if (zft_state(zock_) != TCP_ESTABLISHED) {
+      saveError("zft_state error", 0);
+      return false;
+    }
+    open(time(0), zock_, stack_);
+    return true;
+  }
+
+  template<typename Handler>
+  void pollConn(int64_t now, Handler& handler) {
+    if (Conf::SendTimeoutSec && now >= send_ts_ + Conf::SendTimeoutSec) {
+      handler.onSendTimeout(*this);
+      send_ts_ = now;
+    }
+    bool got_data = read([&](const uint8_t* data, uint32_t size) { return handler.onTcpData(*this, data, size); });
+    if (Conf::RecvTimeoutSec) {
+      if (!got_data && now >= expire_ts_) {
+        handler.onRecvTimeout(*this);
+        got_data = true;
+      }
+      if (got_data) expire_ts_ = now + Conf::RecvTimeoutSec;
+    }
   }
 
   template<typename Handler>
@@ -123,7 +169,7 @@ public:
       return false;
     }
 
-    if (new_size + tail_ > RecvBufSize) {
+    if (new_size + tail_ > Conf::RecvBufSize) {
       zft_zc_recv_done(zock_, zm);
       close("recv buf full");
       return false;
@@ -146,7 +192,7 @@ public:
       }
       else {
         head_ = tail_ - remaining;
-        if (head_ >= RecvBufSize / 2) {
+        if (head_ >= Conf::RecvBufSize / 2) {
           memcpy(recvbuf_, recvbuf_ + head_, remaining);
           head_ = 0;
           tail_ = remaining;
@@ -159,42 +205,13 @@ public:
     return true;
   }
 
-protected:
-  bool connect(struct zf_attr* attr, const char* server_ip, uint16_t server_port) {
-    int rc;
-    struct zft_handle* tcp_handle;
-    if ((rc = zft_alloc(stack_, attr, &tcp_handle)) < 0) {
-      saveError("zft_alloc error", rc);
-      return false;
-    }
-    struct sockaddr_in servaddr;
-    memset(&servaddr, 0, sizeof(servaddr));
-    servaddr.sin_family = AF_INET; // IPv4
-    servaddr.sin_port = htons(server_port);
-    inet_pton(AF_INET, server_ip, &(servaddr.sin_addr));
 
-    close("reconnect");
-    if ((rc = zft_connect(tcp_handle, (struct sockaddr*)&servaddr, sizeof(servaddr), &zock_)) < 0) {
-      saveError("zft_connect error", rc);
-      zft_handle_free(tcp_handle);
-      return false;
-    }
-    while (zft_state(zock_) == TCP_SYN_SENT) zf_reactor_perform(stack_);
-    if (zft_state(zock_) != TCP_ESTABLISHED) {
-      saveError("zft_state error", 0);
-      return false;
-    }
-    open(zock_, stack_);
-    return true;
-  }
-
-  template<uint32_t>
-  friend class TcpdirectTcpServer;
-
-  bool open(struct zft* zock, struct zf_stack* stack) {
+  bool open(int64_t now, struct zft* zock, struct zf_stack* stack) {
     zock_ = zock;
     stack_ = stack;
     head_ = tail_ = 0;
+    send_ts_ = now;
+    expire_ts_ = now + Conf::RecvTimeoutSec;
     return true;
   }
 
@@ -205,16 +222,20 @@ protected:
   struct zft* zock_ = nullptr;
   struct zf_stack* stack_ = nullptr; // stack_ is managed by TcpdirectTcpClient or TcpdirectTcpServer
 
+  int64_t send_ts_ = 0;
+  int64_t expire_ts_ = 0;
   uint32_t head_;
   uint32_t tail_;
-  uint8_t recvbuf_[RecvBufSize];
+  uint8_t recvbuf_[Conf::RecvBufSize];
   char last_error_[64] = "";
 };
 
-template<uint32_t RecvBufSize = 4096>
-class TcpdirectTcpClient : public TcpdirectTcpConnection<RecvBufSize>
+template<typename Conf>
+class TcpdirectTcpClient : public TcpdirectTcpConnection<Conf>
 {
 public:
+  using Conn = TcpdirectTcpConnection<Conf>;
+
   ~TcpdirectTcpClient() {
     this->close("destruct");
     if (this->stack_) {
@@ -222,7 +243,12 @@ public:
     }
   }
 
-  bool connect(const char* interface, const char* server_ip, uint16_t server_port) {
+  bool init(const char* interface, const char* server_ip, uint16_t server_port) {
+    server_addr_.sin_family = AF_INET;
+    inet_pton(AF_INET, server_ip, &(server_addr_.sin_addr));
+    server_addr_.sin_port = htons(server_port);
+    bzero(&(server_addr_.sin_zero), 8);
+
     int rc;
     if ((rc = _zf_init()) < 0) {
       this->saveError("zf_init error", rc);
@@ -244,21 +270,39 @@ public:
       attr_ = nullptr;
       return false;
     }
-    return TcpdirectTcpConnection<RecvBufSize>::connect(attr_, server_ip, server_port);
+    return true;
+  }
+
+  template<typename Handler>
+  void poll(Handler& handler) {
+    int64_t now = time(0);
+    if (!this->isConnected()) {
+      if (now < next_conn_ts_) return;
+      next_conn_ts_ = now + Conf::ConnRetrySec;
+      if (!this->connect(attr_, server_addr_)) {
+        handler.onTcpConnectFailed(*this);
+        return;
+      }
+      handler.onTcpConnected(*this);
+    }
+    this->pollConn(now, handler);
+    if (!this->isConnected()) handler.onTcpDisconnect(*this);
   }
 
 private:
   struct zf_attr* attr_ = nullptr;
+  int64_t next_conn_ts_ = 0;
+  struct sockaddr_in server_addr_;
 };
 
-template<uint32_t RecvBufSize = 4096>
+template<typename Conf>
 class TcpdirectTcpServer
 {
 public:
-  using TcpConnection = TcpdirectTcpConnection<RecvBufSize>;
-  using TcpConnectionPtr = std::unique_ptr<TcpConnection>;
+  using Conn = TcpdirectTcpConnection<Conf>;
 
   bool init(const char* interface, const char* server_ip, uint16_t server_port) {
+    for (uint32_t i = 0; i < Conf::MaxConns; i++) conns_[i] = conns_data_ + i;
     int rc;
     if ((rc = _zf_init()) < 0) {
       saveError("zf_init error", rc);
@@ -293,7 +337,6 @@ public:
     return true;
   }
 
-  // make sure all TcpConnectionPtr destructed before close
   void close(const char* reason) {
     if (listener_) {
       zftl_free(listener_);
@@ -312,21 +355,31 @@ public:
 
   bool isClosed() { return listener_ == nullptr; }
 
-  TcpConnectionPtr accept() {
-    struct zft* zock;
-    zf_reactor_perform(stack_);
-    if (zftl_accept(listener_, &zock) < 0) return TcpConnectionPtr();
-    TcpConnectionPtr conn(new TcpConnection());
-    conn->open(zock, stack_);
-    return conn;
-  }
+  uint32_t getConnCnt() { return conns_cnt_; }
 
-  bool accept2(TcpConnection& conn) {
-    struct zft* zock;
-    zf_reactor_perform(stack_);
-    if (zftl_accept(listener_, &zock) < 0) return false;
-    conn.open(zock, stack_);
-    return true;
+  template<typename Handler>
+  void poll(Handler& handler) {
+    int64_t now = time(0);
+    if (conns_cnt_ < Conf::MaxConns) {
+      Conn& conn = *conns_[conns_cnt_];
+      struct zft* zock;
+      zf_reactor_perform(stack_);
+      if (zftl_accept(listener_, &zock) >= 0) {
+        conn.open(now, zock, stack_);
+        conns_cnt_++;
+        handler.onTcpConnected(conn);
+      }
+    }
+    for (uint32_t i = 0; i < conns_cnt_;) {
+      Conn& conn = *conns_[i];
+      conn.pollConn(now, handler);
+      if (conn.isConnected())
+        i++;
+      else {
+        std::swap(conns_[i], conns_[--conns_cnt_]);
+        handler.onTcpDisconnect(conn);
+      }
+    }
   }
 
 private:
@@ -336,6 +389,9 @@ private:
 
   struct zf_stack* stack_ = nullptr;
   struct zftl* listener_ = nullptr;
+  uint32_t conns_cnt_ = 0;
+  Conn* conns_[Conf::MaxConns];
+  Conn conns_data_[Conf::MaxConns];
   char last_error_[64] = "";
 };
 

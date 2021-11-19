@@ -34,10 +34,11 @@ SOFTWARE.
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <memory>
 
-template<uint32_t RecvBufSize>
-class SocketTcpConnection
+template<typename Conf>
+class SocketTcpConnection : public Conf::UserData
 {
 public:
   ~SocketTcpConnection() { close("destruct"); }
@@ -45,25 +46,6 @@ public:
   const char* getLastError() { return last_error_; };
 
   bool isConnected() { return fd_ >= 0; }
-
-  bool connect(const char* server_ip, uint16_t server_port) {
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0) {
-      saveError("socket error", true);
-      return false;
-    }
-    struct sockaddr_in server_addr;
-    server_addr.sin_family = AF_INET;
-    inet_pton(AF_INET, server_ip, &(server_addr.sin_addr));
-    server_addr.sin_port = htons(server_port);
-    bzero(&(server_addr.sin_zero), 8);
-    if (::connect(fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-      saveError("connect error", true);
-      ::close(fd);
-      return false;
-    }
-    return open(fd);
-  }
 
   bool getPeername(struct sockaddr_in& addr) {
     socklen_t addr_len = sizeof(addr);
@@ -94,6 +76,7 @@ public:
       data += sent;
       size -= sent;
     } while (size != 0);
+    if (Conf::SendTimeoutSec) send_ts_ = time(0);
     return true;
   }
 
@@ -105,20 +88,53 @@ public:
       close("send error", true);
       return false;
     }
+    if (Conf::SendTimeoutSec) send_ts_ = time(0);
     return true;
+  }
+
+protected:
+  template<typename ServerConf>
+  friend class SocketTcpServer;
+
+  bool connect(struct sockaddr_in& server_addr) {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+      saveError("socket error", true);
+      return false;
+    }
+    if (::connect(fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+      saveError("connect error", true);
+      ::close(fd);
+      return false;
+    }
+    return open(time(0), fd);
+  }
+
+  template<typename Handler>
+  void pollConn(int64_t now, Handler& handler) {
+    if (Conf::SendTimeoutSec && now >= send_ts_ + Conf::SendTimeoutSec) {
+      handler.onSendTimeout(*this);
+      send_ts_ = now;
+    }
+    bool got_data = read([&](const uint8_t* data, uint32_t size) { return handler.onTcpData(*this, data, size); });
+    if (Conf::RecvTimeoutSec) {
+      if (!got_data && now >= expire_ts_) {
+        handler.onRecvTimeout(*this);
+        got_data = true;
+      }
+      if (got_data) expire_ts_ = now + Conf::RecvTimeoutSec;
+    }
   }
 
   template<typename Handler>
   bool read(Handler handler) {
-    int ret = ::read(fd_, recvbuf_ + tail_, RecvBufSize - tail_);
+    int ret = ::read(fd_, recvbuf_ + tail_, Conf::RecvBufSize - tail_);
     if (ret <= 0) {
       if (ret < 0 && errno == EAGAIN) return false;
-      if (ret < 0) {
+      if (ret < 0)
         close("read error", true);
-      }
-      else {
+      else
         close("remote close");
-      }
       return false;
     }
     tail_ += ret;
@@ -129,26 +145,23 @@ public:
     }
     else {
       head_ = tail_ - remaining;
-      if (head_ >= RecvBufSize / 2) {
+      if (head_ >= Conf::RecvBufSize / 2) {
         memcpy(recvbuf_, recvbuf_ + head_, remaining);
         head_ = 0;
         tail_ = remaining;
       }
-      else if (tail_ == RecvBufSize) {
+      else if (tail_ == Conf::RecvBufSize) {
         close("recv buf full");
       }
     }
     return true;
   }
 
-protected:
-
-  template<uint32_t>
-  friend class SocketTcpServer;
-
-  bool open(int fd) {
+  bool open(int64_t now, int fd) {
     fd_ = fd;
     head_ = tail_ = 0;
+    send_ts_ = now;
+    expire_ts_ = now + Conf::RecvTimeoutSec;
 
     int flags = fcntl(fd_, F_GETFL, 0);
     if (fcntl(fd_, F_SETFL, flags | O_NONBLOCK) < 0) {
@@ -170,30 +183,57 @@ protected:
   }
 
   int fd_ = -1;
+  int64_t send_ts_ = 0;
+  int64_t expire_ts_ = 0;
   uint32_t head_;
   uint32_t tail_;
-  uint8_t recvbuf_[RecvBufSize];
+  uint8_t recvbuf_[Conf::RecvBufSize];
   char last_error_[64] = "";
 };
 
-template<uint32_t RecvBufSize = 4096>
-class SocketTcpClient : public SocketTcpConnection<RecvBufSize>
+template<typename Conf>
+class SocketTcpClient : public SocketTcpConnection<Conf>
 {
 public:
-  bool connect(const char* interface, const char* server_ip, uint16_t server_port) {
-    return SocketTcpConnection<RecvBufSize>::connect(server_ip, server_port);
+  using Conn = SocketTcpConnection<Conf>;
+
+  bool init(const char* interface, const char* server_ip, uint16_t server_port) {
+    server_addr_.sin_family = AF_INET;
+    inet_pton(AF_INET, server_ip, &(server_addr_.sin_addr));
+    server_addr_.sin_port = htons(server_port);
+    bzero(&(server_addr_.sin_zero), 8);
+    return true;
   }
 
+  template<typename Handler>
+  void poll(Handler& handler) {
+    int64_t now = time(0);
+    if (!this->isConnected()) {
+      if (now < next_conn_ts_) return;
+      next_conn_ts_ = now + Conf::ConnRetrySec;
+      if (!this->connect(server_addr_)) {
+        handler.onTcpConnectFailed(*this);
+        return;
+      }
+      handler.onTcpConnected(*this);
+    }
+    this->pollConn(now, handler);
+    if (!this->isConnected()) handler.onTcpDisconnect(*this);
+  }
+
+private:
+  int64_t next_conn_ts_ = 0;
+  struct sockaddr_in server_addr_;
 };
 
-template<uint32_t RecvBufSize = 4096>
+template<typename Conf>
 class SocketTcpServer
 {
 public:
-  using TcpConnection = SocketTcpConnection<RecvBufSize>;
-  using TcpConnectionPtr = std::unique_ptr<TcpConnection>;
+  using Conn = SocketTcpConnection<Conf>;
 
   bool init(const char* interface, const char* server_ip, uint16_t server_port) {
+    for (uint32_t i = 0; i < Conf::MaxConns; i++) conns_[i] = conns_data_ + i;
     listenfd_ = socket(AF_INET, SOCK_STREAM, 0);
     if (listenfd_ < 0) {
       saveError("socket error");
@@ -243,37 +283,40 @@ public:
 
   bool isClosed() { return listenfd_ < 0; }
 
-  TcpConnectionPtr accept() {
-    struct sockaddr_in clientaddr;
-    socklen_t addr_len = sizeof(clientaddr);
-    int fd = ::accept(listenfd_, (struct sockaddr*)&(clientaddr), &addr_len);
-    if (fd < 0) {
-      return TcpConnectionPtr();
-    }
-    TcpConnectionPtr conn(new TcpConnection());
-    if (!conn->open(fd)) {
-      return TcpConnectionPtr();
-    }
-    return conn;
-  }
+  uint32_t getConnCnt() { return conns_cnt_; }
 
-  bool accept2(TcpConnection& conn) {
-    struct sockaddr_in clientaddr;
-    socklen_t addr_len = sizeof(clientaddr);
-    int fd = ::accept(listenfd_, (struct sockaddr*)&(clientaddr), &addr_len);
-    if (fd < 0) {
-      return false;
+  template<typename Handler>
+  void poll(Handler& handler) {
+    int64_t now = time(0);
+    if (conns_cnt_ < Conf::MaxConns) {
+      Conn& conn = *conns_[conns_cnt_];
+      struct sockaddr_in clientaddr;
+      socklen_t addr_len = sizeof(clientaddr);
+      int fd = ::accept(listenfd_, (struct sockaddr*)&(clientaddr), &addr_len);
+      if (fd >= 0 && conn.open(now, fd)) {
+        conns_cnt_++;
+        handler.onTcpConnected(conn);
+      }
     }
-    if (!conn.open(fd)) {
-      return false;
+    for (uint32_t i = 0; i < conns_cnt_;) {
+      Conn& conn = *conns_[i];
+      conn.pollConn(now, handler);
+      if (conn.isConnected())
+        i++;
+      else {
+        std::swap(conns_[i], conns_[--conns_cnt_]);
+        handler.onTcpDisconnect(conn);
+      }
     }
-    return true;
   }
 
 private:
   void saveError(const char* msg) { snprintf(last_error_, sizeof(last_error_), "%s %s", msg, strerror(errno)); }
 
   int listenfd_ = -1;
+  uint32_t conns_cnt_ = 0;
+  Conn* conns_[Conf::MaxConns];
+  Conn conns_data_[Conf::MaxConns];
   char last_error_[64] = "";
 };
 

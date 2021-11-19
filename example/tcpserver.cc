@@ -1,11 +1,24 @@
 #include <bits/stdc++.h>
+#include <netinet/in.h>
+
+struct ServerConf
+{
+  static const uint32_t RecvBufSize = 4096;
+  static const uint32_t MaxConns = 10;
+  static const uint32_t SendTimeoutSec = 0;
+  static const uint32_t RecvTimeoutSec = 10;
+  struct UserData
+  {
+    struct sockaddr_in addr;
+  };
+};
 
 #ifdef USE_SOLARFLARE
 #include "../Tcpdirect.h"
-using TcpServer = TcpdirectTcpServer<>;
+using TcpServer = TcpdirectTcpServer<ServerConf>;
 #else
 #include "../Socket.h"
-using TcpServer = SocketTcpServer<>;
+using TcpServer = SocketTcpServer<ServerConf>;
 #endif
 
 using namespace std;
@@ -15,6 +28,8 @@ volatile bool running = true;
 void my_handler(int s) {
   running = false;
 }
+
+TcpServer server;
 
 int main(int argc, char** argv) {
   struct sigaction sigIntHandler;
@@ -32,41 +47,38 @@ int main(int argc, char** argv) {
   const char* interface = argv[1];
   const char* server_ip = argv[2];
 
-  TcpServer server;
   if (!server.init(interface, server_ip, 1234)) {
     cout << server.getLastError() << endl;
     return 1;
   }
 
-  vector<TcpServer::TcpConnectionPtr> conns;
   while (running) {
-    auto new_conn = server.accept();
-    if (new_conn) {
-      struct sockaddr_in addr;
-      new_conn->getPeername(addr);
-      conns.push_back(move(new_conn));
-      cout << "new connection from: " << inet_ntoa(addr.sin_addr) << ":" << ntohs(addr.sin_port)
-           << ", total connections: " << conns.size() << endl;
-    }
-    auto it = conns.begin();
-    while (it != conns.end()) {
-      (*it)->read([&](const uint8_t* data, uint32_t size) {
-        // simply echo data back
-        (*it)->writeNonblock(data, size);
+    struct
+    {
+      void onTcpConnected(TcpServer::Conn& conn) {
+        conn.getPeername(conn.addr);
+        cout << "new connection from: " << inet_ntoa(conn.addr.sin_addr) << ":" << ntohs(conn.addr.sin_port)
+             << ", total connections: " << server.getConnCnt() << endl;
+      }
+      void onSendTimeout(TcpServer::Conn& conn) {
+        cout << "onSendTimeout should not be called as SendTimeoutSec=0" << endl;
+        exit(1);
+      }
+      uint32_t onTcpData(TcpServer::Conn& conn, const uint8_t* data, uint32_t size) {
+        conn.writeNonblock(data, size);
         return 0;
-      });
-      if ((*it)->isConnected()) {
-        it++;
       }
-      else {
-        swap(*it, conns.back());
-        conns.pop_back();
-        cout << "client disconnected, total connections: " << conns.size() << endl;
+      void onRecvTimeout(TcpServer::Conn& conn) {
+        cout << "onRecvTimeout" << endl;
+        conn.close("timeout");
       }
-    }
+      void onTcpDisconnect(TcpServer::Conn& conn) {
+        cout << "client disconnected: " << inet_ntoa(conn.addr.sin_addr) << ":" << ntohs(conn.addr.sin_port)
+             << ", total connections: " << server.getConnCnt() << endl;
+      }
+    } handler;
+    server.poll(handler);
   }
-  // destruct all conns before server
-  conns.clear();
 
   return 0;
 }

@@ -1,11 +1,22 @@
 #include <bits/stdc++.h>
 
+struct ClientConf
+{
+  static const uint32_t RecvBufSize = 4096;
+  static const uint32_t ConnRetrySec = 5;
+  static const uint32_t SendTimeoutSec = 1;
+  static const uint32_t RecvTimeoutSec = 3;
+  struct UserData
+  {
+  };
+};
+
 #ifdef USE_SOLARFLARE
 #include "../Tcpdirect.h"
-using TcpClient = TcpdirectTcpClient<>;
+using TcpClient = TcpdirectTcpClient<ClientConf>;
 #else
 #include "../Socket.h"
-using TcpClient = SocketTcpClient<>;
+using TcpClient = SocketTcpClient<ClientConf>;
 #endif
 
 #include "timestamp.h"
@@ -24,6 +35,9 @@ void my_handler(int s) {
   running = false;
 }
 
+TcpClient client;
+Packet pack;
+
 int main(int argc, char** argv) {
   struct sigaction sigIntHandler;
 
@@ -39,42 +53,36 @@ int main(int argc, char** argv) {
   }
   const char* interface = argv[1];
   const char* server_ip = argv[2];
+  client.init(interface, server_ip, 1234);
 
-  TcpClient client;
-  Packet pack;
-  uint64_t last_connect_time = 0;
   while (running) {
-    auto now = getns();
-    if (!client.isConnected()) {
-      // retry connecting once per sec
-      if (now - last_connect_time < 1000000000) continue;
-      last_connect_time = now;
-      if (!client.connect(interface, server_ip, 1234)) {
-        cout << "connect error: " << client.getLastError() << endl;
-        continue;
+    struct
+    {
+      void onTcpConnectFailed(TcpClient::Conn& conn) { cout << "onTcpConnectFailed, " << conn.getLastError() << endl; }
+      void onTcpConnected(TcpClient::Conn& conn) { cout << "onTcpConnected" << endl; }
+      void onSendTimeout(TcpClient::Conn& conn) {
+        pack.val++;
+        pack.ts = getns();
+        conn.writeNonblock(&pack, sizeof(pack));
       }
-      now = getns();
-    }
-    // send new pack once per sec
-    if (now - pack.ts >= 1000000000) {
-      pack.val++;
-      pack.ts = now;
-      client.writeNonblock((const uint8_t*)&pack, sizeof(pack));
-    }
-    client.read([](const uint8_t* data, uint32_t size) {
-      auto now = getns();
-      while (size >= sizeof(Packet)) {
-        const Packet& recv_pack = *(const Packet*)data;
-        auto lat = now - recv_pack.ts;
-        cout << "recv val: " << recv_pack.val << " latency: " << lat << endl;
-        data += sizeof(Packet);
-        size -= sizeof(Packet);
+      uint32_t onTcpData(TcpClient::Conn& conn, const uint8_t* data, uint32_t size) {
+        auto now = getns();
+        while (size >= sizeof(Packet)) {
+          const Packet& recv_pack = *(const Packet*)data;
+          auto lat = now - recv_pack.ts;
+          cout << "recv val: " << recv_pack.val << " latency: " << lat << endl;
+          data += sizeof(Packet);
+          size -= sizeof(Packet);
+        }
+        return size;
       }
-      return size;
-    });
-    if (!client.isConnected()) {
-      cout << "connection closed: " << client.getLastError() << endl;
-    }
+      void onRecvTimeout(TcpClient::Conn& conn) {
+        cout << "onRecvTimeout" << endl;
+        conn.close("timeout");
+      }
+      void onTcpDisconnect(TcpClient::Conn& conn) { cout << "onDisconnect: " << conn.getLastError() << endl; }
+    } handler;
+    client.poll(handler);
   }
 
   return 0;
