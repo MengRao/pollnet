@@ -92,10 +92,14 @@ TcpClient has one additional callback function for `poll`:
 // when connect failed, it will retry connecting after some period(defined in Conf::ConnRetrySec)
 void onTcpConnectFailed(){}
 ```
-While TcpServer has one additional function itself:
+While TcpServer has more functions:
 ```c++
-// get total active connection number
+// get total active connection number(for efvi vertion, it also includes SYN-RECEIVED connections)
 uint32_t getConnCnt();
+
+// visit all established connections, handler is of signature: void (TcpServer::Conn& conn).
+template<typename Handler>
+void foreachConn(Handler handler);
 ```
 
 Note that Efvi tcp implementation provides more functionalities for finer controls, check [efvitcp](https://github.com/MengRao/pollnet/tree/master/efvitcp) for details.
@@ -138,7 +142,7 @@ EthReceiver can capture/sniff ethernet packets received on a NIC port and requir
 bool init(const char* interface);
 
 // receive ethernet packet without blocking
-// Handler is of signature void (const char* data, uint32_t size) where data is raw ethernet packet with header
+// Handler is of signature: void (const char* data, uint32_t size) where data is raw ethernet packet with header
 template<typename Handler>
 bool read(Handler handler);
 
