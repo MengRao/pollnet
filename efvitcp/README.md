@@ -151,7 +151,8 @@ Some other information user can get from a TcpConn what may be helpful:
 * `bool isClosed()`: Check if the connection is closed, if so the connection should not be used.
 
 The interfaces of TcpServer template is very similar to that of TcpClient, with below differeces:
-* The `connect()` function is replaced by `const char* listen(uint16_t server_port)`
+* The `connect()` function is replaced by `const char* listen(uint16_t server_port)`.
+* TcpServer has two additionl functions: `getConnCnt()` and `foreachConn(Handler handler)`.
 * The `onConnectionRefused()` event is replaced by `bool allowNewConnection(uint32_t ip, uint16_t port_be)`, this new event occurs when a new connection is being established(in Syn-Received state) and the user can decide whether to accept it or not according to its remote ip and port.
 
 ## Configurations
