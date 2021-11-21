@@ -17,8 +17,9 @@ These problems make tcpdirect hard to use in practice, so an alternative approac
 * Reactor model with rich network and time events, giving finer control over a tcp connection.
 * Highly configurable in compile-time.
 * Non-blocking - none of the apis blocks.
-* No thread created internally
-* Support user timers on each connection.
+* No thread created internally.
+* Supports user timers on each connection.
+* Provides the same interface as other pollnet tcp libs, such as Socket and Tcpdirect.
 
 ## Platform
 Linux and C++11 is required.
@@ -57,7 +58,7 @@ else {
 ```
 Note that `connect()` not returning an error doesn't mean the connection is established: it just indicate that a Syn is sent out without error(as it's non-blocking), we still need to wait for the 3-way handshake to complete. As efvitcp won't create a thread internally, we need to `poll()` it in the user thread, and as `poll()` is also non-blocking, we need to call it **repetitively**. 
 
-`poll()` is the core of muliplexing in the lib, all sorts of events will be triggers by this single call including whether or not the `connect()` is successful. How can user retrieve the events from `poll()`? A class with event handler functions(non-virtual) need to be defined and an instance be provided as the argument of `poll()`, and it'll call those user defined callback functions when events occur. For completing a connection establishment, three events could be triggered:
+`poll()` is the core of muliplexing in the lib, all sorts of events will be triggered by this single call including whether or not the `connect()` is successful. How can user retrieve the events from `poll()`? A class with event handler functions(non-virtual) need to be defined and an instance be provided as the argument of `poll()`, and it'll call those user defined callback functions when events occur. For completing a connection establishment, three events could be triggered:
 
 ```c++
 struct MyClient {
@@ -150,7 +151,8 @@ Some other information user can get from a TcpConn what may be helpful:
 * `bool isClosed()`: Check if the connection is closed, if so the connection should not be used.
 
 The interfaces of TcpServer template is very similar to that of TcpClient, with below differeces:
-* The `connect()` function is replaced by `const char* listen(uint16_t server_port)`
+* The `connect()` function is replaced by `const char* listen(uint16_t server_port)`.
+* TcpServer has two additionl functions: `getConnCnt()` and `foreachConn(Handler handler)`.
 * The `onConnectionRefused()` event is replaced by `bool allowNewConnection(uint32_t ip, uint16_t port_be)`, this new event occurs when a new connection is being established(in Syn-Received state) and the user can decide whether to accept it or not according to its remote ip and port.
 
 ## Configurations
@@ -173,7 +175,7 @@ struct Conf
   static const bool TimestampOption = false;
   static const int CongestionControlAlgo = 0; // 0: no cwnd, 1: new reno, 2: cubic
   static const uint32_t UserTimerCnt = 1;
-  using UserData = char;
+  struct UserData{};
 };
 ```
 * `uint32_t ConnSendBufCnt`: The number of DMA send buffers in one connection. Send buffer is used to hold unacked data in case it need to be resent, if the buffer is full no more data can be sendable.
@@ -191,7 +193,7 @@ struct Conf
 * `bool TimestampOption`: Whether or not to enable tcp timestamp option. This option can be used to update rtt more precisely, recognize old duplicate packets more accurately and PAWS(Protection Against Wrapped Sequences). if `WindowScaleOption` is used, `TimestampOption` should also be enabled.
 * `int CongestionControlAlgo`: The congestion control algorithm to use. There're three options available: "0": no cwnd; "1": new reno; "2": cubic. The "on cwnd" option is almost equal to no congestion control, but fast retransmission is still used: the first unacked segment will be resent immediately on 3 duplicate acks or a partial ack in recover.
 * `uint32_t UserTimerCnt`: The number of user timers per connection. The timer_id must be less than this value.
-* `using UserData`: User defined type attached to each connection, which can be accessed by conn.user_data.
+* `struct UserData {int XXX;};`: User defined type attached to each connection, which can be accessed directly by conn.XXX.
 
 ## Memory Overhead
 Efvitcp won't dynamically allocate memory, all memoery it uses is in the object user defines, so it's pretty easy to check the memory overhead of efvitcp:
@@ -208,7 +210,4 @@ cout << sizeof(TcpServer) << endl;
 Efvitcp is not thread safe, user should have the same thread polling TcpClient/TcpServer and operating on TcpConns. Multi-threading communication techniques can be used to pass data among the network thread and data processing threads.
 
 ## Pollnet Interface
-Efvitcp also provides a wrapper class `EfviTcpClient` using the [pollnet](https://github.com/MengRao/pollnet) interface, so users can easily switch tcp client underlying implemenation among Socket/Tcpdirect/Efvi with same application code. Currently EfviTcpServer pollnet api is not implemented because of different multiplexing mechanism.
-
-## Examples
-Check [test](https://github.com/MengRao/efvitcp/tree/main/test) for a tcp echo client/server code example.
+Efvitcp also provides two wrapper classes `EfviTcpClient` and `EfviTcpServer` in `EfviTcp.h` using the same interface as pollnet tcp client/server.
