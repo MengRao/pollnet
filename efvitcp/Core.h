@@ -37,7 +37,7 @@ SOFTWARE.
 #include <stdio.h>
 #include <stdlib.h>
 
-#define EFVITCP_DEBUG 0
+//#define EFVITCP_DEBUG 0
 
 namespace efvitcp {
 
@@ -109,7 +109,7 @@ struct CSum
       add(*(uint16_t*)((const char*)p + i));
     }
   }
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
   void add(const void* p, uint32_t len) { // len must be even
     for (uint32_t i = 0; i < len; i += 2) {
       add(*(uint16_t*)((const char*)p + i));
@@ -213,7 +213,7 @@ struct TimeWaitConn
   TimerNode timer;
 };
 
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
 void dumpPack(IpHeader* ip_hdr) {
   TcpHeader* tcp_hdr = (TcpHeader*)(ip_hdr + 1);
   uint32_t seq_num = ntohl(tcp_hdr->seq_num) + tcp_hdr->syn;
@@ -252,7 +252,7 @@ public:
   const char* init(const char* interface) {
     destruct();
     now_ts = getns() >> TsScale;
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
     srand(now_ts);
 #endif
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -444,7 +444,7 @@ public:
     send(ack);
   }
 
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
   void checksum(IpHeader* ip_hdr) {
     TcpHeader* tcp_hdr = (TcpHeader*)(ip_hdr + 1);
     CSum sum = 0;
@@ -473,7 +473,7 @@ public:
   void send(SendBuf* buf) {
     uint32_t send_id = (uint64_t)((uint8_t*)buf - pkt_buf - RecvBufSize * Conf::RecvBufCnt) / SendBufSize;
     uint32_t frame_len = 14 + ntohs(buf->ip_hdr.tot_len);
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
     checksum(&buf->ip_hdr);
     if (rand() % 100 < 3) {
       return; // drop rate at 3%
@@ -576,7 +576,7 @@ public:
 
   void delConnEntry(uint64_t key) {
     ConnHashEntry* entry = findConnEntry(key);
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
     if (entry->key != key) {
       cout << "delConnEntry failed, entry->key: " << entry->key << ", key: " << key << endl;
       printTbl();
@@ -587,7 +587,7 @@ public:
       conns[--conn_cnt] = entry->conn_id;
     else
       tw_ids[--tw_cnt] = entry->conn_id - Conf::MaxConnCnt;
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
     cout << "delConnEntry, key: " << key << ", conn_id: " << entry->conn_id << ", conn_cnt: " << conn_cnt
          << ", tw_cnt: " << tw_cnt << endl;
 #endif
@@ -609,7 +609,7 @@ public:
       return;
     }
     ConnHashEntry* entry = findConnEntry(key);
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
     if (entry->key != key) {
       cout << "enterTW failed, entry->key: " << entry->key << ", key: " << key << endl;
       printTbl();
@@ -619,7 +619,7 @@ public:
 #endif
     conns[--conn_cnt] = entry->conn_id;
     uint32_t tw_id = tw_ids[tw_cnt++];
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
     cout << "enterTW, key: " << key << ", conn_cnt: " << conn_cnt << ", tw_cnt: " << tw_cnt
          << ", src port: " << htons(buf->tcp_hdr.src_port) << ", dst port: " << htons(buf->tcp_hdr.dst_port) << endl;
 #endif
@@ -636,7 +636,7 @@ public:
     addTimer(TimeWaitTimeout, &tw.timer);
   }
 
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
   void printTbl() {
     for (uint32_t i = 0; i <= tbl_mask; i++) {
       ConnHashEntry* entry = conn_tbl + i;
@@ -648,7 +648,7 @@ public:
 
   void tryExpandConnTbl() {
     if (getTblSize() * 2 <= tbl_mask) return;
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
     cout << "tryExpandConnTbl, getTblSize(): " << getTblSize() << ", tbl_mask: " << tbl_mask << endl;
     printTbl();
 #endif
@@ -660,7 +660,7 @@ public:
       for (; cnt; entry++) {
         if (entry->key == EmptyKey) continue;
         ConnHashEntry* new_entry = findConnEntry(entry->key);
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
         if (new_entry->key != entry->key && new_entry->key != EmptyKey) {
           cout << "invalid rehash key, new_entry->key: " << new_entry->key << ", entry->key: " << entry->key << endl;
           cout << "entry pos: " << (entry - conn_tbl) << ", new_entry pos: " << (new_entry - conn_tbl) << endl;
@@ -675,7 +675,7 @@ public:
     uint64_t end_cnt = new_end - (conn_tbl + tbl_mask + 1);
     rehash(conn_tbl, getTblSize() - end_cnt);
     rehash(conn_tbl + tbl_mask + 1, end_cnt);
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
     printTbl();
 #endif
   }
@@ -689,7 +689,7 @@ public:
       duration_ts = std::min(duration_ts, TimerSlots * (TimerSlots + 1) - 1 - (now_ts % TimerSlots));
       node->expire_ts = now_ts + duration_ts;
       slot = &timer_slots[1][node->expire_ts / TimerSlots % TimerSlots];
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
       uint32_t cur_long = now_ts / TimerSlots;
       uint32_t new_long = node->expire_ts / TimerSlots;
       if (new_long - cur_long > 256) {
@@ -709,7 +709,7 @@ public:
   void pollTime(TimerHandler handler) {
     uint32_t ts = getns() >> TsScale;
     if (ts == now_ts) return;
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
     if ((int)(ts - now_ts) < 0) {
       cout << "time going back!!, ts: " << ts << ", now_ts: " << now_ts << endl;
       exit(1);
@@ -719,7 +719,7 @@ public:
       TimerNode* slot = &timer_slots[1][now_ts / TimerSlots % TimerSlots];
       for (TimerNode* node = slot->next; node != slot;) {
         TimerNode* next = node->next;
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
         if (node->expire_ts - now_ts > 255) {
           cout << "invalid expire_ts: " << node->expire_ts << ", now_ts: " << now_ts << ", conn_id: " << node->conn_id
                << endl;

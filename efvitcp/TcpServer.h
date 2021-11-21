@@ -52,6 +52,13 @@ public:
 
   uint32_t getConnCnt() { return core.conn_cnt; }
 
+  template<typename Handler>
+  void foreachConn(Handler handler) {
+    for (auto& conn : conns) {
+      if (conn.isEstablished()) handler(conn);
+    }
+  }
+
   const char* listen(uint16_t server_port) {
     server_port_be = htons(server_port);
     const char* err;

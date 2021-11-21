@@ -104,7 +104,7 @@ public:
     onClose();
   }
 
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
   void dump(const char* note) {
     SendBuf* buf = getSendBuf(0);
     cout << note << ": conn_id: " << conn_id << ", key: " << connHashKey(buf->ip_hdr.dst_ip, buf->tcp_hdr.dst_port)
@@ -363,7 +363,7 @@ private:
         case 2: {
           if (length == 4) {
             smss = std::min((uint16_t)(core->SendMTU - 40), ntohs(*(uint16_t*)opt));
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
             cout << "smss: " << smss << endl;
 #endif
           }
@@ -373,7 +373,7 @@ private:
           if (Conf::WindowScaleOption && length == 3) {
             has_ws = 1;
             send_wnd_shift = std::min((uint8_t)14, *opt);
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
             cout << "send win shift: " << (int)send_wnd_shift << endl;
 #endif
           }
@@ -383,7 +383,7 @@ private:
           if (Conf::TimestampOption && length == 10) {
             has_ts = 1;
             recent_ts = ntohl(*(uint32_t*)opt);
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
             cout << "has_ts" << endl;
 #endif
           }
@@ -443,7 +443,7 @@ private:
     }
 
     handler.onConnectionEstablished(*this);
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
     dump("onEstab");
 #endif
   }
@@ -495,7 +495,7 @@ private:
       }
       if (got_ts && (int)(seq_num - last_ack_seq) <= 0 && (int)(tsval - recent_ts) >= 0) recent_ts = tsval;
     }
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
     SendBuf* buf = getSendBuf(0);
     uint64_t key = connHashKey(buf->ip_hdr.dst_ip, buf->tcp_hdr.dst_port);
     uint64_t pack_key = connHashKey(ip_hdr->src_ip, tcp_hdr->src_port);
@@ -533,7 +533,7 @@ private:
     // fifth check the ACK field
     if (!tcp_hdr->ack) return;
     uint32_t ack_num = ntohl(tcp_hdr->ack_num);
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
     if ((int)(ack_num - getSendSeq(send_next)) > 0) {
       cout << "abnomal ack_num!!!!, ack_num: " << ack_num << endl;
       dumpPack(ip_hdr);
@@ -563,7 +563,7 @@ private:
       int rtt = std::max(1, (int)(core->now_ts - send_ts));
       rttvar -= (int)(rttvar - std::abs(rtt - (int)srtt)) >> 2;
       srtt -= (int)(srtt - rtt) >> 3;
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
       if ((int)rttvar < 0 || (int)srtt < 0) {
         cout << "abnormal rtt: " << rtt << ", srtt: " << (int)srtt << ", rttvar: " << (int)rttvar << endl;
         dump("abnormal rtt");
@@ -587,7 +587,7 @@ private:
         if (cwnd < ssthresh) //  slow start
           cwnd += std::min(smss, newly_acked_size);
         else if (cwnd < (1 << 30)) { // cong av
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
           if (cwnd > (1 << 30) + 500000000) {
             dump("abnomal cwnd");
             exit(1);
@@ -749,7 +749,7 @@ private:
 
       // eighth, check the FIN bit
       if (fin_available) {
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
         if (fin_sent && send_una != data_next) {
           dump("abnormal unack");
           exit(1);
@@ -762,7 +762,7 @@ private:
       }
     }
     if (pending_ack) sendAck(immediate_ack || recv_buf_seq + segs[0].second - last_ack_seq >= 2 * getRMSS());
-    if (fin_sent && fin_received && (send_una == data_next)) {
+    if (fin_sent && fin_received && established && (send_una == data_next)) {
       handler.onConnectionClosed(*this);
       onClose(true);
     }
@@ -771,7 +771,7 @@ private:
   void resendUna(bool reset_ssthresh) {
     retries++;
     SendBuf* una = getSendBuf(send_una); // assume una->avail == true
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
     core->checksum(&una->ip_hdr);
 #endif
     CSum sum = (uint16_t)~una->tcp_hdr.checksum;
@@ -803,7 +803,7 @@ private:
           close();
           break;
         }
-#if EFVITCP_DEBUG
+#ifdef EFVITCP_DEBUG
         if (retries >= 5) {
           dump("abnormal retries");
           if (retries >= 6) {

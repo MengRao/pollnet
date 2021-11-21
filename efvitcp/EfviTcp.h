@@ -236,6 +236,11 @@ public:
   uint32_t getConnCnt() { return server_.getConnCnt(); }
 
   template<typename Handler>
+  void foreachConn(Handler handler) {
+    server_.foreachConn([&](TcpConn& conn) { handler(*(Conn*)&conn); });
+  }
+
+  template<typename Handler>
   void poll(Handler& handler) {
     struct TmpHandler
     {

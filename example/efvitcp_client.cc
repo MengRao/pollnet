@@ -1,6 +1,6 @@
 #include <bits/stdc++.h>
-#include "../efvitcp/TcpClient.h"
 using namespace std;
+#include "../efvitcp/TcpClient.h"
 
 struct Conf
 {
@@ -146,7 +146,7 @@ public:
   int64_t last_send_val = 0;
 };
 
-const int NCli = 1;
+const int NCli = 100;
 Client clis[NCli];
 
 int main(int argc, const char** argv) {

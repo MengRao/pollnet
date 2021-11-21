@@ -357,6 +357,14 @@ public:
   uint32_t getConnCnt() { return conns_cnt_; }
 
   template<typename Handler>
+  void foreachConn(Handler handler) {
+    for (uint32_t i = 0; i < conns_cnt_; i++) {
+      Conn& conn = *conns_[i];
+      handler(conn);
+    }
+  }
+
+  template<typename Handler>
   void poll(Handler& handler) {
     int64_t now = time(0);
     if (conns_cnt_ < Conf::MaxConns) {

@@ -64,6 +64,12 @@ int main(int argc, char** argv) {
         conn.getPeername(conn.addr);
         cout << "new connection from: " << inet_ntoa(conn.addr.sin_addr) << ":" << ntohs(conn.addr.sin_port)
              << ", total connections: " << server.getConnCnt() << endl;
+        /*
+        server.foreachConn([&](TcpServer::Conn& conn) {
+          cout << "current connection from: " << inet_ntoa(conn.addr.sin_addr) << ":" << ntohs(conn.addr.sin_port)
+               << endl;
+        });
+        */
       }
       void onSendTimeout(TcpServer::Conn& conn) {
         cout << "onSendTimeout should not be called as SendTimeoutSec=0" << endl;
@@ -79,7 +85,7 @@ int main(int argc, char** argv) {
       }
       void onTcpDisconnect(TcpServer::Conn& conn) {
         cout << "client disconnected: " << inet_ntoa(conn.addr.sin_addr) << ":" << ntohs(conn.addr.sin_port)
-             << ", total connections: " << server.getConnCnt() << endl;
+             << ", reason: " << conn.getLastError() << ", total connections: " << server.getConnCnt() << endl;
       }
     } handler;
     server.poll(handler);
