@@ -34,11 +34,16 @@ TcpClient and TcpServer are template classes that take a parameter for configura
 ```c++
 struct ClientConf
 {
-  static const uint32_t RecvBufSize = 4096; // receive buffer size for each connection
-  static const uint32_t ConnRetrySec = 5; // connect retry periods in seconds
-  static const uint32_t SendTimeoutSec = 1; // send timeout in seconds for each connection, set to 0 to disable timeout
-  static const uint32_t RecvTimeoutSec = 3; // receive timeout in seconds for each connection, set to 0 to disable timeout
-  struct UserData // user defined data attached to each connection
+  // receive buffer size for each connection
+  static const uint32_t RecvBufSize = 4096;
+  // connect retry periods in seconds
+  static const uint32_t ConnRetrySec = 5;
+  // send timeout in seconds for each connection, set to 0 to disable timeout
+  static const uint32_t SendTimeoutSec = 1;
+  // receive timeout in seconds for each connection, set to 0 to disable timeout
+  static const uint32_t RecvTimeoutSec = 3;
+  // user defined data attached to each connection
+  struct UserData 
   {
       int foo;
       std::string bar;
@@ -48,11 +53,12 @@ using TcpClient = SocketTcpClient<ClientConf>;
 
 struct ServerConf
 {
-  static const uint32_t RecvBufSize = 4096; // receive buffer size for each connection
-  static const uint32_t MaxConns = 10;   // max number of connections the server can support
-  static const uint32_t SendTimeoutSec = 0;  // send timeout in seconds for each connection, set to 0 to disable timeout
-  static const uint32_t RecvTimeoutSec = 10;  // receive timeout in seconds for each connection, set to 0 to disable timeout
-  struct UserData    // user defined data attached to each connection
+  static const uint32_t RecvBufSize = 4096;
+  // max number of connections the server can support
+  static const uint32_t MaxConns = 10;
+  static const uint32_t SendTimeoutSec = 0;
+  static const uint32_t RecvTimeoutSec = 10;
+  struct UserData
   {
     int foo;
     std::string bar;
