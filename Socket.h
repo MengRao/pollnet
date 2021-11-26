@@ -36,6 +36,7 @@ SOFTWARE.
 #include <string.h>
 #include <time.h>
 #include <memory>
+#include <limits>
 
 template<typename Conf>
 class SocketTcpConnection : public Conf::UserData
@@ -205,12 +206,17 @@ public:
     return true;
   }
 
+  void allowReconnect() { next_conn_ts_ = 0; }
+
   template<typename Handler>
   void poll(Handler& handler) {
     int64_t now = time(0);
     if (!this->isConnected()) {
       if (now < next_conn_ts_) return;
-      next_conn_ts_ = now + Conf::ConnRetrySec;
+      if (Conf::ConnRetrySec)
+        next_conn_ts_ = now + Conf::ConnRetrySec;
+      else
+        next_conn_ts_ = std::numeric_limits<int64_t>::max(); // disable reconnect
       if (!this->connect(server_addr_)) {
         handler.onTcpConnectFailed();
         return;

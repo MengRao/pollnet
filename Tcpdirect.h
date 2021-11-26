@@ -29,6 +29,7 @@ SOFTWARE.
 #include <zf/zf.h>
 #include <time.h>
 #include <memory>
+#include <limits>
 
 namespace {
 bool _zf_inited = false;
@@ -272,12 +273,17 @@ public:
     return true;
   }
 
+  void allowReconnect() { next_conn_ts_ = 0; }
+
   template<typename Handler>
   void poll(Handler& handler) {
     int64_t now = time(0);
     if (!this->isConnected()) {
       if (now < next_conn_ts_) return;
-      next_conn_ts_ = now + Conf::ConnRetrySec;
+      if (Conf::ConnRetrySec)
+        next_conn_ts_ = now + Conf::ConnRetrySec;
+      else
+        next_conn_ts_ = std::numeric_limits<int64_t>::max(); // disable reconnect
       if (!this->connect(attr_, server_addr_)) {
         handler.onTcpConnectFailed();
         return;
