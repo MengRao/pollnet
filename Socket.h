@@ -61,37 +61,40 @@ public:
     }
   }
 
-  bool write(const void* data_, uint32_t size, bool more = false) {
-    const uint8_t* data = (const uint8_t*)data_;
+  int writeSome(const void* data, uint32_t size, bool more = false) {
     int flags = MSG_NOSIGNAL;
     if (more) flags |= MSG_MORE;
+    int ret = ::send(fd_, data, size, flags);
+    if (ret < 0) {
+      if (errno == EAGAIN)
+        ret = 0;
+      else
+        close("send error", true);
+    }
+    if (Conf::SendTimeoutSec) send_ts_ = time(0);
+    return ret;
+  }
+
+  bool write(const void* data_, uint32_t size, bool more = false) {
+    const uint8_t* data = (const uint8_t*)data_;
     do {
-      int sent = ::send(fd_, data, size, flags);
-      if (sent < 0) {
-        if (errno != EAGAIN) {
-          close("send error", true);
-          return false;
-        }
-        continue;
-      }
+      int sent = writeSome(data, size, more);
+      if (sent < 0) return false;
       data += sent;
       size -= sent;
     } while (size != 0);
-    if (Conf::SendTimeoutSec) send_ts_ = time(0);
     return true;
   }
 
+
   bool writeNonblock(const void* data, uint32_t size, bool more = false) {
-    int flags = MSG_NOSIGNAL;
-    if (more) flags |= MSG_MORE;
-    int sent = ::send(fd_, data, size, flags);
-    if (sent != (int)size) {
+    if (writeSome(data, size, more) != (int)size) {
       close("send error", true);
       return false;
     }
-    if (Conf::SendTimeoutSec) send_ts_ = time(0);
     return true;
   }
+
 
 protected:
   template<typename ServerConf>

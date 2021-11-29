@@ -70,13 +70,18 @@ public:
       TcpConn::close();
     }
 
+    int writeSome(const void* data, uint32_t size, bool more = false) {
+      int ret = this->send(data, size, more);
+      if (Conf::SendTimeoutSec) this->setUserTimer(0, Conf::SendTimeoutSec * 1000);
+      return ret;
+    }
+
     // blocking write is not supported currently
     bool writeNonblock(const void* data, uint32_t size, bool more = false) {
-      if (this->send(data, size, more) != size) {
+      if ((uint32_t)writeSome(data, size, more) != size) {
         close("send buffer full");
         return false;
       }
-      if (Conf::SendTimeoutSec) this->setUserTimer(0, Conf::SendTimeoutSec * 1000);
       return true;
     }
 

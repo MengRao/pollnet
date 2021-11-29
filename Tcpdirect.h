@@ -70,35 +70,39 @@ public:
     }
   }
 
+  int writeSome(const void* data, uint32_t size, bool more = false) {
+    int flags = 0;
+    if (more) flags |= MSG_MORE;
+    int sent = zft_send_single(zock_, data, size, flags);
+    if (sent < 0) {
+      if (sent == -EAGAIN || sent == -ENOMEM)
+        sent = 0;
+      else
+        saveError("zft_send_single error", sent);
+    }
+    if (Conf::SendTimeoutSec) send_ts_ = time(0);
+    return sent;
+  }
+
   bool write(const void* data_, uint32_t size, bool more = false) {
     const uint8_t* data = (const uint8_t*)data_;
     int flags = 0;
     if (more) flags |= MSG_MORE;
     do {
-      int sent = zft_send_single(zock_, data, size, flags);
-      if (sent < 0) {
-        if (sent != -EAGAIN && sent != -ENOMEM) {
-          saveError("zft_send_single error", sent);
-          return false;
-        }
-        zf_reactor_perform(stack_);
-        continue;
-      }
+      int sent = writeSome(data, size, more);
+      if (sent < 0) return false;
       data += sent;
       size -= sent;
     } while (size != 0);
-    if (Conf::SendTimeoutSec) send_ts_ = time(0);
     return true;
   }
 
+
   bool writeNonblock(const void* data, uint32_t size, bool more = false) {
-    int flags = 0;
-    if (more) flags |= MSG_MORE;
-    if (zft_send_single(zock_, data, size, flags) != size) {
+    if (writeSome(data, size, more) != (int)size) {
       close("zft_send_single failed");
       return false;
     }
-    if (Conf::SendTimeoutSec) send_ts_ = time(0);
     return true;
   }
 
