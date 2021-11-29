@@ -98,6 +98,8 @@ public:
     return true;
   }
 
+  int writeSome(const void* data, uint32_t size, bool more = false) { return conn.writeSome(data, size, more); }
+
   bool writeNonblock(const void* data, uint32_t size, bool more = false) {
     return conn.writeNonblock(data, size, more);
   }
