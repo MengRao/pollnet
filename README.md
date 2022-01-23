@@ -69,8 +69,11 @@ using TcpServer = SocketTcpServer<ServerConf>;
 ```
 TcpClient and TcpServer also have similar user interfaces: first call `init()` to initialize the it:
 ```c++
-// interface can be empty for Socket version
+// TcpServer, interface can be empty for Socket version
 bool init(const char* interface, const char* server_ip, uint16_t server_port);
+
+// TcpClient can bind local_port as well(auto set by default)
+bool init(const char* interface, const char* server_ip, uint16_t server_port, uint16_t local_port = 0);
 ```
 
 Then call `poll(Handler& handler)` repetitively to get it running, in which `TcpClient` automatically tries connecting and `TcpServer` tries accepting. `poll()` takes an user defined object for handling network/timer events, all defined callback functions(non-virtual) in both classes are as follows:
