@@ -91,10 +91,12 @@ public:
 
   bool isConnected() { return conn.isEstablished(); }
 
-  bool init(const char* interface, const char* server_ip, uint16_t server_port) {
+  bool init(const char* interface, const char* server_ip, uint16_t server_port,
+            uint16_t local_port = 0) {
     if ((conn.err_ = client.init(interface))) return false;
     server_ip_ = server_ip;
     server_port_ = server_port;
+    local_port_ = local_port;
     return true;
   }
 
@@ -112,14 +114,14 @@ public:
   void poll(Handler& handler) {
     if (conn.isClosed()) {
       int64_t now = time(0);
-      if (now < next_conn_ts_) return;
-      if (Conf::ConnRetrySec)
-        next_conn_ts_ = now + Conf::ConnRetrySec;
-      else
-        next_conn_ts_ = std::numeric_limits<int64_t>::max(); // disable reconnect
-      if ((conn.err_ = client.connect(server_ip_.c_str(), server_port_))) {
-        handler.onTcpConnectFailed();
-        return;
+      if (now >= next_conn_ts_) {
+        if (Conf::ConnRetrySec)
+          next_conn_ts_ = now + Conf::ConnRetrySec;
+        else
+          next_conn_ts_ = std::numeric_limits<int64_t>::max(); // disable reconnect
+        if ((conn.err_ = client.connect(server_ip_.c_str(), server_port_, local_port_))) {
+          handler.onTcpConnectFailed();
+        }
       }
     }
 
@@ -178,6 +180,7 @@ public:
   TcpClient client;
   std::string server_ip_;
   uint16_t server_port_;
+  uint16_t local_port_;
   Conn& conn;
   int64_t next_conn_ts_ = 0;
 };

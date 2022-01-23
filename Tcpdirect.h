@@ -110,12 +110,25 @@ protected:
   template<typename ServerConf>
   friend class TcpdirectTcpServer;
 
-  bool connect(struct zf_attr* attr, struct sockaddr_in& server_addr) {
+  bool connect(struct zf_attr* attr, struct sockaddr_in& server_addr, uint16_t local_port_be) {
     int rc;
     struct zft_handle* tcp_handle;
     if ((rc = zft_alloc(stack_, attr, &tcp_handle)) < 0) {
       saveError("zft_alloc error", rc);
       return false;
+    }
+
+    if (local_port_be) {
+      struct sockaddr_in local_addr;
+      local_addr.sin_family = AF_INET;
+      local_addr.sin_addr.s_addr = INADDR_ANY;
+      local_addr.sin_port = local_port_be;
+      if ((rc = zft_addr_bind(tcp_handle, (struct sockaddr*)&local_addr, sizeof(local_addr), 0)) <
+          0) {
+        saveError("bind error", rc);
+        zft_handle_free(tcp_handle);
+        return false;
+      }
     }
 
     if ((rc = zft_connect(tcp_handle, (struct sockaddr*)&server_addr, sizeof(server_addr), &zock_)) < 0) {
@@ -247,11 +260,13 @@ public:
     }
   }
 
-  bool init(const char* interface, const char* server_ip, uint16_t server_port) {
+  bool init(const char* interface, const char* server_ip, uint16_t server_port,
+            uint16_t local_port = 0) {
     server_addr_.sin_family = AF_INET;
     inet_pton(AF_INET, server_ip, &(server_addr_.sin_addr));
     server_addr_.sin_port = htons(server_port);
     bzero(&(server_addr_.sin_zero), 8);
+    local_port_be_ = htons(local_port);
 
     int rc;
     if ((rc = _zf_init()) < 0) {
@@ -288,7 +303,7 @@ public:
         next_conn_ts_ = now + Conf::ConnRetrySec;
       else
         next_conn_ts_ = std::numeric_limits<int64_t>::max(); // disable reconnect
-      if (!this->connect(attr_, server_addr_)) {
+      if (!this->connect(attr_, server_addr_, local_port_be_)) {
         handler.onTcpConnectFailed();
         return;
       }
@@ -302,6 +317,7 @@ private:
   struct zf_attr* attr_ = nullptr;
   int64_t next_conn_ts_ = 0;
   struct sockaddr_in server_addr_;
+  uint16_t local_port_be_;
 };
 
 template<typename Conf>

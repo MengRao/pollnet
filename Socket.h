@@ -100,11 +100,22 @@ protected:
   template<typename ServerConf>
   friend class SocketTcpServer;
 
-  bool connect(struct sockaddr_in& server_addr) {
+  bool connect(struct sockaddr_in& server_addr, uint16_t local_port_be) {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) {
       saveError("socket error", true);
       return false;
+    }
+    if (local_port_be) {
+      struct sockaddr_in local_addr;
+      local_addr.sin_family = AF_INET;
+      local_addr.sin_addr.s_addr = INADDR_ANY;
+      local_addr.sin_port = local_port_be;
+      if (::bind(fd, (struct sockaddr*)&local_addr, sizeof(local_addr)) < 0) {
+        saveError("bind error", true);
+        ::close(fd);
+        return false;
+      }
     }
     if (::connect(fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
       saveError("connect error", true);
@@ -201,11 +212,13 @@ class SocketTcpClient : public SocketTcpConnection<Conf>
 public:
   using Conn = SocketTcpConnection<Conf>;
 
-  bool init(const char* interface, const char* server_ip, uint16_t server_port) {
+  bool init(const char* interface, const char* server_ip, uint16_t server_port,
+            uint16_t local_port = 0) {
     server_addr_.sin_family = AF_INET;
     inet_pton(AF_INET, server_ip, &(server_addr_.sin_addr));
     server_addr_.sin_port = htons(server_port);
     bzero(&(server_addr_.sin_zero), 8);
+    local_port_be_ = htons(local_port);
     return true;
   }
 
@@ -220,7 +233,7 @@ public:
         next_conn_ts_ = now + Conf::ConnRetrySec;
       else
         next_conn_ts_ = std::numeric_limits<int64_t>::max(); // disable reconnect
-      if (!this->connect(server_addr_)) {
+      if (!this->connect(server_addr_, local_port_be_)) {
         handler.onTcpConnectFailed();
         return;
       }
@@ -233,6 +246,7 @@ public:
 private:
   int64_t next_conn_ts_ = 0;
   struct sockaddr_in server_addr_;
+  uint16_t local_port_be_;
 };
 
 template<typename Conf>
