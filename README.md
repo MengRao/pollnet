@@ -72,7 +72,7 @@ TcpClient and TcpServer also have similar user interfaces: first call `init()` t
 // TcpServer, interface can be empty for Socket version
 bool init(const char* interface, const char* server_ip, uint16_t server_port);
 
-// TcpClient can bind local_port as well(auto set by default)
+// TcpClient can bind to local_port as well(auto set by default)
 bool init(const char* interface, const char* server_ip, uint16_t server_port, uint16_t local_port = 0);
 ```
 
