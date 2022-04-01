@@ -141,7 +141,6 @@ public:
     return true;
   }
 
-private:
   struct EtherHeader
   {
     /** Destination MAC */
@@ -212,6 +211,7 @@ private:
     uint16_t urgentPointer;
   };
 
+private:
   static const int IPHeaderPos = sizeof(EtherHeader);
   static const int TcpHeaderPos = IPHeaderPos + sizeof(IpHeader); // we assume Ip header is fixed 20 bytes
   bool init_stream = false;
