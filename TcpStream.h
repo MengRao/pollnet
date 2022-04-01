@@ -211,9 +211,9 @@ public:
     uint16_t urgentPointer;
   };
 
-private:
   static const int IPHeaderPos = sizeof(EtherHeader);
   static const int TcpHeaderPos = IPHeaderPos + sizeof(IpHeader); // we assume Ip header is fixed 20 bytes
+private:
   bool init_stream = false;
   uint32_t filter_src_ip;
   uint32_t filter_dst_ip;
