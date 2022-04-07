@@ -6,7 +6,7 @@
 using EthReceiver = EfviEthReceiver;
 #else
 #include "../Socket.h"
-using EthReceiver = SocketEthReceiver;
+using EthReceiver = SocketEthReceiver<>;
 #endif
 
 using namespace std;

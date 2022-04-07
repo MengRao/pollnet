@@ -517,6 +517,7 @@ private:
   char last_error_[64] = "";
 };
 
+template<uint32_t RecvBufSize = 1500>
 class SocketEthReceiver
 {
 public:
@@ -580,7 +581,6 @@ public:
 
 private:
   void saveError(const char* msg) { snprintf(last_error_, sizeof(last_error_), "%s %s", msg, strerror(errno)); }
-  static const uint32_t RecvBufSize = 10000;
   int fd_ = -1;
   uint8_t buf[RecvBufSize];
   char last_error_[64] = "";
