@@ -411,13 +411,12 @@ public:
     udp->udp_len_be16 = htons(8 + size);
     memcpy(pkt + 1, data, size);
     uint32_t frame_len = 42 + size;
-    int rc;
+    int rc = 0;
     if (use_ctpio) {
       uint32_t ipsum = ipsum_cache + iplen;
       ipsum += (ipsum >> 16u);
       ip4->ip_check_be16 = ~ipsum & 0xffff;
       ef_vi_transmit_ctpio(&vi, &pkt->eth, frame_len, 40);
-      rc = ef_vi_transmit_ctpio_fallback(&vi, pkt->post_addr, frame_len, buf_index_);
     }
     else {
       rc = ef_vi_transmit(&vi, pkt->post_addr, frame_len, buf_index_);
