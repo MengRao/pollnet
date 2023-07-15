@@ -87,6 +87,15 @@ else {
   cout << "connection established" << endl;
 }
 ```
+`poll()` also take an optional parameter `int64_t ns` which is nanosecond timestamp of current time. If user maintains the timestamp in his application, it can be used by efvitcp so the latency of `poll()` can be reduced by a half(when idle). The nanosecond timestamp can be read by `clock_gettime()` in below `getns()`, or by `tscns.rdns()`([tscns](https://github.com/MengRao/tscns)):
+```c++
+int64_t getns() {
+  timespec ts;
+  ::clock_gettime(CLOCK_REALTIME, &ts);
+  return ts.tv_sec * 1000000000 + ts.tv_nsec;
+}
+```
+
 Once connection is established on the callback `onConnectionEstablished`, we can save the reference to the `TcpConn` parameter, because all operations on an established connection will be called on this object.
 
 For sending data, two functions of `TcpConn` can be used:
@@ -191,7 +200,7 @@ struct Conf
 * `uint32_t MaxRtoMS`: Maximum retransmission timeout.
 * `bool WindowScaleOption`: Whether or not to enable tcp window scale option. This option is useful if window size could be larger than 65535 in either peer.
 * `bool TimestampOption`: Whether or not to enable tcp timestamp option. This option can be used to update rtt more precisely, recognize old duplicate packets more accurately and PAWS(Protection Against Wrapped Sequences). if `WindowScaleOption` is used, `TimestampOption` should also be enabled.
-* `int CongestionControlAlgo`: The congestion control algorithm to use. There're three options available: "0": no cwnd; "1": new reno; "2": cubic. The "on cwnd" option is almost equal to no congestion control, but fast retransmission is still used: the first unacked segment will be resent immediately on 3 duplicate acks or a partial ack in recover.
+* `int CongestionControlAlgo`: The congestion control algorithm to use. There're three options available: "0": no cwnd; "1": new reno; "2": cubic. The "no cwnd" option is almost equal to no congestion control, but fast retransmission is still used: the first unacked segment will be resent immediately on 3 duplicate acks or a partial ack in recover.
 * `uint32_t UserTimerCnt`: The number of user timers per connection. The timer_id must be less than this value.
 * `struct UserData {int XXX;};`: User defined type attached to each connection, which can be accessed directly by conn.XXX.
 
@@ -210,4 +219,4 @@ cout << sizeof(TcpServer) << endl;
 Efvitcp is not thread safe, user should have the same thread polling TcpClient/TcpServer and operating on TcpConns. Multi-threading communication techniques can be used to pass data among the network thread and data processing threads.
 
 ## Pollnet Interface
-Efvitcp also provides two wrapper classes `EfviTcpClient` and `EfviTcpServer` in `EfviTcp.h` using the same interface as pollnet tcp client/server.
+Efvitcp also provides two wrapper classes `EfviTcpClient` and `EfviTcpServer` in `EfviTcp.h` using the same interface as pollnet tcp client/server, except for the optional parameter `ns` in `poll()`.
