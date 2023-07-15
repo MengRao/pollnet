@@ -111,7 +111,7 @@ public:
   void allowReconnect() { next_conn_ts_ = 0; }
 
   template<typename Handler>
-  void poll(Handler& handler) {
+  void poll(Handler& handler, int64_t ns = 0) {
     if (conn.isClosed()) {
       int64_t now = time(0);
       if (now >= next_conn_ts_) {
@@ -174,7 +174,7 @@ public:
       Handler& handler;
       Conn& conn;
     } tmp_handler(handler, conn);
-    client.poll(tmp_handler);
+    client.poll(tmp_handler, ns);
   }
 
   TcpClient client;
@@ -261,7 +261,7 @@ public:
   }
 
   template<typename Handler>
-  void poll(Handler& handler) {
+  void poll(Handler& handler, int64_t ns = 0) {
     struct TmpHandler
     {
       TmpHandler(Handler& h_)
@@ -305,7 +305,7 @@ public:
 
       Handler& handler;
     } tmp_handler(handler);
-    server_.poll(tmp_handler);
+    server_.poll(tmp_handler, ns);
   }
 
   const char* err_ = "Closed";

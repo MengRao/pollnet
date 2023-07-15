@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
   }
   const char* interface = argv[1];
   const char* server_ip = argv[2];
-  if (!client.init(interface, server_ip, 1234, 1234)) {
+  if (!client.init(interface, server_ip, 1234)) {
     cout << client.getLastError() << endl;
     exit(1);
   }

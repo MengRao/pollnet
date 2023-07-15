@@ -706,8 +706,9 @@ public:
   }
 
   template<typename TimerHandler>
-  void pollTime(TimerHandler handler) {
-    uint32_t ts = getns() >> TsScale;
+  void pollTime(TimerHandler handler, int64_t ns = 0) {
+    if (!ns) ns = getns();
+    uint32_t ts = ns >> TsScale;
     if (ts == now_ts) return;
 #ifdef EFVITCP_DEBUG
     if ((int)(ts - now_ts) < 0) {

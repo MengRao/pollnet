@@ -72,8 +72,8 @@ public:
   }
 
   template<typename EventHandler>
-  void poll(EventHandler& handler) {
-    core.pollTime([&](TimerNode* node) { return conn.onTimer(handler, node); });
+  void poll(EventHandler& handler, int64_t ns = 0) {
+    core.pollTime([&](TimerNode* node) { return conn.onTimer(handler, node); }, ns);
 
     core.pollNet([&](uint64_t key, ConnHashEntry* entry, EtherHeader* eth_hdr) {
       IpHeader* ip_hdr = (IpHeader*)(eth_hdr + 1);
