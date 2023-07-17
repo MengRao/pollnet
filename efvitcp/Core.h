@@ -242,6 +242,7 @@ public:
   ~Core() { destruct(); }
 
   void destruct() {
+    if (dh < 0) return;
     ef_memreg_free(&memreg, dh);
     ef_vi_free(&vi, dh);
     ef_pd_free(&pd, dh);
