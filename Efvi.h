@@ -74,7 +74,7 @@ protected:
         return false;
       }
     }
-    if ((rc = ef_memreg_alloc(&memreg, dh, &pd, dh, pkt_bufs, alloc_size) < 0)) {
+    if ((rc = ef_memreg_alloc(&memreg, dh, &pd, dh, pkt_bufs, alloc_size)) < 0) {
       saveError("ef_memreg_alloc failed", rc);
       return false;
     }
@@ -357,7 +357,7 @@ public:
       }
     }
 
-    if ((rc = ef_memreg_alloc(&memreg, dh, &pd, dh, pkt_bufs, alloc_size) < 0)) {
+    if ((rc = ef_memreg_alloc(&memreg, dh, &pd, dh, pkt_bufs, alloc_size)) < 0) {
       saveError("ef_memreg_alloc failed", rc);
       return false;
     }
