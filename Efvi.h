@@ -202,6 +202,21 @@ public:
     return ret;
   }
 
+  // for those whose ip checksum is not computed...
+  template<typename Handler>
+  bool readNoCheck(Handler handler) {
+    ef_event evs;
+    if (ef_eventq_poll(&vi, &evs, 1) == 0) return false;
+
+    int id = EF_EVENT_RX_RQ_ID(evs);
+    struct pkt_buf* pkt_buf = (struct pkt_buf*)(pkt_bufs + id * PKT_BUF_SIZE);
+    const uint8_t* data = (const uint8_t*)pkt_buf + udp_prefix_len;
+    uint16_t len = ntohs(*(uint16_t*)(data - 4)) - 8;
+    handler(data, len);
+    ef_vi_receive_post(&vi, pkt_buf->post_addr, id);
+    return true;
+  }
+
   template<typename Handler>
   bool recvfrom(Handler handler) {
     ef_event evs;
