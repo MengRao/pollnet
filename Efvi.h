@@ -431,7 +431,7 @@ public:
       uint32_t ipsum = ipsum_cache + iplen;
       ipsum += (ipsum >> 16u);
       ip4->ip_check_be16 = ~ipsum & 0xffff;
-      ef_vi_transmit_ctpio(&vi, &pkt->eth, frame_len, 40);
+      ef_vi_transmit_ctpio(&vi, &pkt->eth, frame_len, 64);
       rc = ef_vi_transmit_ctpio_fallback(&vi, pkt->post_addr, frame_len, buf_index_);
     }
     else {
