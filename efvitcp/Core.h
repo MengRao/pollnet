@@ -482,7 +482,7 @@ public:
 #endif
 
     if (use_ctpio) {
-      ef_vi_transmit_ctpio(&vi, &buf->eth_hdr, frame_len, 40);
+      ef_vi_transmit_ctpio(&vi, &buf->eth_hdr, frame_len, frame_len);
       ef_vi_transmit_ctpio_fallback(&vi, buf->post_addr, frame_len, send_id);
     }
     else {
