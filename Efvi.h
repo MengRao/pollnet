@@ -431,7 +431,7 @@ public:
       uint32_t ipsum = ipsum_cache + iplen;
       ipsum += (ipsum >> 16u);
       ip4->ip_check_be16 = ~ipsum & 0xffff;
-      ef_vi_transmit_ctpio(&vi, &pkt->eth, frame_len, 64);
+      ef_vi_transmit_ctpio(&vi, &pkt->eth, frame_len, frame_len);
       rc = ef_vi_transmit_ctpio_fallback(&vi, pkt->post_addr, frame_len, buf_index_);
     }
     else {
@@ -439,9 +439,9 @@ public:
     }
     buf_index_ = (buf_index_ + 1) % N_BUF;
 
-    ef_event evs[N_BUF];
-    ef_request_id ids[N_BUF];
-    int events = ef_eventq_poll(&vi, evs, N_BUF);
+    ef_event evs[EF_VI_EVENT_POLL_MIN_EVS];
+    ef_request_id ids[EF_VI_TRANSMIT_BATCH];
+    int events = ef_eventq_poll(&vi, evs, EF_VI_EVENT_POLL_MIN_EVS);
     for (int i = 0; i < events; ++i) {
       if (EF_EVENT_TYPE_TX == EF_EVENT_TYPE(evs[i])) {
         ef_vi_transmit_unbundle(&vi, &evs[i], ids);
@@ -595,7 +595,7 @@ private:
     udp->udp_check_be16 = 0;
   }
 
-  static const int N_BUF = 16;
+  static const int N_BUF = 128;
   static const int PKT_BUF_SIZE = 2048;
   struct ef_vi vi;
   ef_driver_handle dh = -1;
