@@ -122,7 +122,7 @@ private:
         break;
       }
     }
-    fclose(pipe);
+    pclose(pipe);
     if (!found) return "Can't find gw by " IPRouteGetCmd;
 
     FILE* arp_file = fopen(NetARPFile, "r");

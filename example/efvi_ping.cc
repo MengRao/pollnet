@@ -229,11 +229,11 @@ public:
     if (!pipe) return false;
     while (fgets(buf, sizeof(buf), pipe)) {
       if (sscanf(buf, "%*s via %s", gw) == 1) {
-        fclose(pipe);
+        pclose(pipe);
         return true;
       }
     }
-    fclose(pipe);
+    pclose(pipe);
     return false;
   }
 
