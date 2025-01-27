@@ -26,6 +26,7 @@ SOFTWARE.
 #include <etherfabric/pd.h>
 #include <etherfabric/memreg.h>
 #include <etherfabric/capabilities.h>
+#include <etherfabric/efct_vi.h>
 #include <arpa/inet.h>
 #include <sys/shm.h>
 #include <sys/stat.h>
@@ -54,13 +55,13 @@ protected:
       return false;
     }
 
-
-    int vi_flags = EF_VI_FLAGS_DEFAULT;
-
-    if ((rc = ef_vi_alloc_from_pd(&vi, dh, &pd, dh, -1, N_BUF + 1, 0, NULL, -1, (enum ef_vi_flags)vi_flags)) < 0) {
+    if ((rc = ef_vi_alloc_from_pd(&vi, dh, &pd, dh, -1, N_BUF, 0, NULL, -1, EF_VI_FLAGS_DEFAULT)) <
+        0) {
       saveError("ef_vi_alloc_from_pd failed", rc);
       return false;
     }
+
+    if (ef_vi_receive_fill_level(&vi) > 0) return true; // is_x3
 
     size_t alloc_size = N_BUF * PKT_BUF_SIZE;
     buf_mmapped = true;
@@ -111,7 +112,7 @@ protected:
     }
   }
 
-  static const int N_BUF = 512;
+  static const int N_BUF = 511;
   static const int PKT_BUF_SIZE = 2048;
   struct pkt_buf
   {
@@ -187,18 +188,29 @@ public:
   bool read(Handler handler) {
     ef_event evs;
     if (ef_eventq_poll(&vi, &evs, 1) == 0) return false;
-
-    int id = EF_EVENT_RX_RQ_ID(evs);
-    struct pkt_buf* pkt_buf = (struct pkt_buf*)(pkt_bufs + id * PKT_BUF_SIZE);
     int type = EF_EVENT_TYPE(evs);
     bool ret = false;
-    if (type == EF_EVENT_TYPE_RX) {
-      const uint8_t* data = (const uint8_t*)pkt_buf + udp_prefix_len;
-      uint16_t len = ntohs(*(uint16_t*)(data - 4)) - 8;
-      handler(data, len);
-      ret = true;
+
+    if (pkt_bufs) {
+      int id = EF_EVENT_RX_RQ_ID(evs);
+      struct pkt_buf* pkt_buf = (struct pkt_buf*)(pkt_bufs + id * PKT_BUF_SIZE);
+      if (type == EF_EVENT_TYPE_RX) {
+        const uint8_t* data = (const uint8_t*)pkt_buf + udp_prefix_len;
+        uint16_t len = ntohs(*(uint16_t*)(data - 4)) - 8;
+        handler(data, len);
+        ret = true;
+      }
+      ef_vi_receive_post(&vi, pkt_buf->post_addr, id);
     }
-    ef_vi_receive_post(&vi, pkt_buf->post_addr, id);
+    else {
+      if (type == EF_EVENT_TYPE_RX_REF) {
+        const uint8_t* data = (const uint8_t*)efct_vi_rxpkt_get(&vi, evs.rx_ref.pkt_id) + 42;
+        uint16_t len = ntohs(*(uint16_t*)(data - 4)) - 8;
+        handler(data, len);
+        ret = true;
+      }
+      efct_vi_rxpkt_release(&vi, evs.rx_ref.pkt_id);
+    }
     return ret;
   }
 
@@ -208,12 +220,20 @@ public:
     ef_event evs;
     if (ef_eventq_poll(&vi, &evs, 1) == 0) return false;
 
-    int id = EF_EVENT_RX_RQ_ID(evs);
-    struct pkt_buf* pkt_buf = (struct pkt_buf*)(pkt_bufs + id * PKT_BUF_SIZE);
-    const uint8_t* data = (const uint8_t*)pkt_buf + udp_prefix_len;
-    uint16_t len = ntohs(*(uint16_t*)(data - 4)) - 8;
-    handler(data, len);
-    ef_vi_receive_post(&vi, pkt_buf->post_addr, id);
+    if (pkt_bufs) {
+      int id = EF_EVENT_RX_RQ_ID(evs);
+      struct pkt_buf* pkt_buf = (struct pkt_buf*)(pkt_bufs + id * PKT_BUF_SIZE);
+      const uint8_t* data = (const uint8_t*)pkt_buf + udp_prefix_len;
+      uint16_t len = ntohs(*(uint16_t*)(data - 4)) - 8;
+      handler(data, len);
+      ef_vi_receive_post(&vi, pkt_buf->post_addr, id);
+    }
+    else {
+      const uint8_t* data = (const uint8_t*)efct_vi_rxpkt_get(&vi, evs.rx_ref.pkt_id) + 42;
+      uint16_t len = ntohs(*(uint16_t*)(data - 4)) - 8;
+      handler(data, len);
+      efct_vi_rxpkt_release(&vi, evs.rx_ref.pkt_id);
+    }
     return true;
   }
 
@@ -223,17 +243,27 @@ public:
     if (ef_eventq_poll(&vi, &evs, 1) == 0) return false;
 
     struct sockaddr_in src_addr;
-
-    int id = EF_EVENT_RX_RQ_ID(evs);
-    struct pkt_buf* pkt_buf = (struct pkt_buf*)(pkt_bufs + id * PKT_BUF_SIZE);
-    const uint8_t* data = (const uint8_t*)pkt_buf + udp_prefix_len;
     src_addr.sin_family = AF_INET;
-    src_addr.sin_addr.s_addr = *(uint32_t*)(data - 16);
-    src_addr.sin_port = *(uint16_t*)(data - 8);
-    uint16_t len = ntohs(*(uint16_t*)(data - 4)) - 8;
 
-    handler(data, len, src_addr);
-    ef_vi_receive_post(&vi, pkt_buf->post_addr, id);
+    if (pkt_bufs) {
+      int id = EF_EVENT_RX_RQ_ID(evs);
+      struct pkt_buf* pkt_buf = (struct pkt_buf*)(pkt_bufs + id * PKT_BUF_SIZE);
+      const uint8_t* data = (const uint8_t*)pkt_buf + udp_prefix_len;
+      src_addr.sin_addr.s_addr = *(uint32_t*)(data - 16);
+      src_addr.sin_port = *(uint16_t*)(data - 8);
+      uint16_t len = ntohs(*(uint16_t*)(data - 4)) - 8;
+      handler(data, len, src_addr);
+      ef_vi_receive_post(&vi, pkt_buf->post_addr, id);
+    }
+    else {
+      const uint8_t* data = (const uint8_t*)efct_vi_rxpkt_get(&vi, evs.rx_ref.pkt_id) + 42;
+      src_addr.sin_addr.s_addr = *(uint32_t*)(data - 16);
+      src_addr.sin_port = *(uint16_t*)(data - 8);
+      uint16_t len = ntohs(*(uint16_t*)(data - 4)) - 8;
+      handler(data, len, src_addr);
+      efct_vi_rxpkt_release(&vi, evs.rx_ref.pkt_id);
+    }
+
     return true;
   }
 
@@ -276,16 +306,28 @@ public:
     ef_event evs;
     if (ef_eventq_poll(&vi, &evs, 1) == 0) return false;
 
-    int id = EF_EVENT_RX_RQ_ID(evs);
-    struct pkt_buf* pkt_buf = (struct pkt_buf*)(pkt_bufs + id * PKT_BUF_SIZE);
     int type = EF_EVENT_TYPE(evs);
     bool ret = false;
-    if (type == EF_EVENT_TYPE_RX) {
-      const uint8_t* data = (const uint8_t*)pkt_buf + 64 + rx_prefix_len;
-      uint32_t len = EF_EVENT_RX_BYTES(evs) - rx_prefix_len;
-      handler(data, len);
+
+    if (pkt_bufs) {
+      int id = EF_EVENT_RX_RQ_ID(evs);
+      struct pkt_buf* pkt_buf = (struct pkt_buf*)(pkt_bufs + id * PKT_BUF_SIZE);
+      if (type == EF_EVENT_TYPE_RX) {
+        const uint8_t* data = (const uint8_t*)pkt_buf + 64 + rx_prefix_len;
+        uint32_t len = EF_EVENT_RX_BYTES(evs) - rx_prefix_len;
+        handler(data, len);
+      }
+      ef_vi_receive_post(&vi, pkt_buf->post_addr, id);
     }
-    ef_vi_receive_post(&vi, pkt_buf->post_addr, id);
+    else {
+      if (type == EF_EVENT_TYPE_RX_REF) {
+        const uint8_t* data = (const uint8_t*)efct_vi_rxpkt_get(&vi, evs.rx_ref.pkt_id);
+        uint16_t len = evs.rx_ref.len;
+        handler(data, len);
+        ret = true;
+      }
+      efct_vi_rxpkt_release(&vi, evs.rx_ref.pkt_id);
+    }
     return ret;
   }
 
@@ -345,51 +387,58 @@ public:
       return false;
     }
 
-    int vi_flags = EF_VI_FLAGS_DEFAULT;
     int ifindex = if_nametoindex(interface);
-    unsigned long capability_val = 0;
-    if (ef_vi_capabilities_get(dh, ifindex, EF_VI_CAP_CTPIO, &capability_val) == 0 && capability_val) {
-      use_ctpio = true;
-      vi_flags |= EF_VI_TX_CTPIO;
+    unsigned long val = 0;
+    if (ef_vi_capabilities_get(dh, ifindex, EF_VI_CAP_CTPIO_ONLY, &val) == 0 && val) {
+      is_x3 = true;
     }
 
-    if ((rc = ef_vi_alloc_from_pd(&vi, dh, &pd, dh, -1, 0, N_BUF + 1, NULL, -1, (enum ef_vi_flags)vi_flags)) < 0) {
+    if ((rc = ef_vi_alloc_from_pd(&vi, dh, &pd, dh, -1, 0, is_x3 ? -1 : N_BUF, NULL, -1,
+                                  EF_VI_TX_CTPIO)) < 0) {
       saveError("ef_vi_alloc_from_pd failed", rc);
       return false;
     }
     ef_vi_get_mac(&vi, dh, local_mac);
 
-    size_t alloc_size = N_BUF * PKT_BUF_SIZE;
-    buf_mmapped = true;
-    pkt_bufs =
-      (uint8_t*)mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | MAP_HUGETLB, -1, 0);
-    if (pkt_bufs == MAP_FAILED) {
-      buf_mmapped = false;
-      rc = posix_memalign((void**)&pkt_bufs, 4096, alloc_size);
-      if (rc != 0) {
-        saveError("posix_memalign failed", -rc);
-        return false;
-      }
-    }
-
-    if ((rc = ef_memreg_alloc(&memreg, dh, &pd, dh, pkt_bufs, alloc_size)) < 0) {
-      saveError("ef_memreg_alloc failed", rc);
-      return false;
-    }
-
-    for (int i = 0; i < N_BUF; i++) {
-      struct pkt_buf* pkt = (struct pkt_buf*)(pkt_bufs + i * PKT_BUF_SIZE);
-      pkt->post_addr = ef_memreg_dma_addr(&memreg, i * PKT_BUF_SIZE) + sizeof(ef_addr);
-      init_udp_pkt(&(pkt->eth), local_addr, local_mac, dest_addr, dest_mac);
-    }
-
-    uint16_t* ip4 = (uint16_t*)&((struct pkt_buf*)pkt_bufs)->ip4;
+    uint8_t eth[42];
+    init_udp_pkt(eth, local_addr, local_mac, dest_addr, dest_mac);
+    uint16_t* ip4 = (uint16_t*)(eth + 14);
     ipsum_cache = 0;
     for (int i = 0; i < 10; i++) {
       ipsum_cache += ip4[i];
     }
     ipsum_cache = (ipsum_cache >> 16u) + (ipsum_cache & 0xffff);
     ipsum_cache += (ipsum_cache >> 16u);
+
+    if (is_x3) {
+      memcpy(s.x3.eth, eth, 42);
+    }
+    else {
+      size_t alloc_size = N_BUF * PKT_BUF_SIZE;
+      s.x2.buf_index = 0;
+      s.x2.buf_mmapped = true;
+      s.x2.pkt_bufs = (uint8_t*)mmap(NULL, alloc_size, PROT_READ | PROT_WRITE,
+                                     MAP_ANONYMOUS | MAP_PRIVATE | MAP_HUGETLB, -1, 0);
+      if (s.x2.pkt_bufs == MAP_FAILED) {
+        s.x2.buf_mmapped = false;
+        rc = posix_memalign((void**)&s.x2.pkt_bufs, 4096, alloc_size);
+        if (rc != 0) {
+          saveError("posix_memalign failed", -rc);
+          return false;
+        }
+      }
+
+      if ((rc = ef_memreg_alloc(&s.x2.memreg, dh, &pd, dh, s.x2.pkt_bufs, alloc_size)) < 0) {
+        saveError("ef_memreg_alloc failed", rc);
+        return false;
+      }
+
+      for (int i = 0; i < N_BUF; i++) {
+        struct pkt_buf* pkt = (struct pkt_buf*)(s.x2.pkt_bufs + i * PKT_BUF_SIZE);
+        pkt->post_addr = ef_memreg_dma_addr(&s.x2.memreg, i * PKT_BUF_SIZE) + sizeof(ef_addr);
+        memcpy(&(pkt->eth), eth, 42);
+      }
+    }
 
     return true;
   }
@@ -405,39 +454,28 @@ public:
       ef_driver_close(dh);
       dh = -1;
     }
-    if (pkt_bufs) {
-      if (buf_mmapped) {
-        munmap(pkt_bufs, N_BUF * PKT_BUF_SIZE);
+    if (!is_x3) {
+      if (s.x2.pkt_bufs) {
+        if (s.x2.buf_mmapped) {
+          munmap(s.x2.pkt_bufs, N_BUF * PKT_BUF_SIZE);
+        }
+        else {
+          free(s.x2.pkt_bufs);
+        }
+        s.x2.pkt_bufs = nullptr;
       }
-      else {
-        free(pkt_bufs);
-      }
-      pkt_bufs = nullptr;
     }
   }
 
   bool write(const void* data, uint32_t size) {
-    struct pkt_buf* pkt = (struct pkt_buf*)(pkt_bufs + buf_index_ * PKT_BUF_SIZE);
-    struct ci_ether_hdr* eth = &pkt->eth;
-    struct ci_ip4_hdr* ip4 = (struct ci_ip4_hdr*)(eth + 1);
-    struct ci_udp_hdr* udp = (struct ci_udp_hdr*)(ip4 + 1);
-    uint16_t iplen = htons(28 + size);
-    ip4->ip_tot_len_be16 = iplen;
-    udp->udp_len_be16 = htons(8 + size);
+    if (is_x3) return writeX3(data, size);
+    struct pkt_buf* pkt = (struct pkt_buf*)(s.x2.pkt_bufs + s.x2.buf_index * PKT_BUF_SIZE);
+    update_udp_pkt(&pkt->eth, size);
     memcpy(pkt + 1, data, size);
     uint32_t frame_len = 42 + size;
-    int rc;
-    if (use_ctpio) {
-      uint32_t ipsum = ipsum_cache + iplen;
-      ipsum += (ipsum >> 16u);
-      ip4->ip_check_be16 = ~ipsum & 0xffff;
-      ef_vi_transmit_ctpio(&vi, &pkt->eth, frame_len, frame_len);
-      rc = ef_vi_transmit_ctpio_fallback(&vi, pkt->post_addr, frame_len, buf_index_);
-    }
-    else {
-      rc = ef_vi_transmit(&vi, pkt->post_addr, frame_len, buf_index_);
-    }
-    buf_index_ = (buf_index_ + 1) % N_BUF;
+    ef_vi_transmit_ctpio(&vi, &pkt->eth, frame_len, 64);
+    int rc = ef_vi_transmit_ctpio_fallback(&vi, pkt->post_addr, frame_len, s.x2.buf_index);
+    s.x2.buf_index = (s.x2.buf_index + 1) % N_BUF;
 
     ef_event evs[EF_VI_EVENT_POLL_MIN_EVS];
     ef_request_id ids[EF_VI_TRANSMIT_BATCH];
@@ -448,6 +486,17 @@ public:
       }
     }
     return rc == 0;
+  }
+
+  bool writeX3(const void* data, uint32_t size) {
+    update_udp_pkt(s.x3.eth, size);
+
+    struct iovec iov[2] = {{s.x3.eth, 42}, {(void*)data, size}};
+    ef_vi_transmitv_ctpio(&vi, 42 + size, iov, 2, 0);
+
+    ef_event evs[EF_VI_EVENT_POLL_MIN_EVS];
+    ef_eventq_poll(&vi, evs, EF_VI_EVENT_POLL_MIN_EVS);
+    return true;
   }
 
 private:
@@ -559,7 +608,7 @@ private:
     ci_udp_hdr_init(udp, ip4, local_addr.sin_port, dest_addr.sin_port, 0);
   }
 
-  inline int update_udp_pkt(void* buf, uint32_t paylen) {
+  inline void update_udp_pkt(void* buf, uint32_t paylen) {
     struct ci_ether_hdr* eth = (struct ci_ether_hdr*)buf;
     struct ci_ip4_hdr* ip4 = (struct ci_ip4_hdr*)(eth + 1);
     struct ci_udp_hdr* udp = (struct ci_udp_hdr*)(ip4 + 1);
@@ -569,7 +618,6 @@ private:
     ipsum += (ipsum >> 16u);
     ip4->ip_check_be16 = ~ipsum & 0xffff;
     udp->udp_len_be16 = htons(8 + paylen);
-    return 42 + paylen;
   }
 
   void ci_ip4_hdr_init(struct ci_ip4_hdr* ip, int opts_len, int tot_len, int id_be16, int protocol, unsigned saddr_be32,
@@ -598,13 +646,23 @@ private:
   static const int N_BUF = 128;
   static const int PKT_BUF_SIZE = 2048;
   struct ef_vi vi;
+  uint32_t ipsum_cache;
+  bool is_x3 = false;
+  union
+  {
+    struct
+    {
+      uint8_t* pkt_bufs;
+      uint32_t buf_index;
+      bool buf_mmapped;
+      struct ef_memreg memreg;
+    } x2;
+    struct
+    {
+      uint8_t eth[42];
+    } x3;
+  } s;
   ef_driver_handle dh = -1;
   struct ef_pd pd;
-  struct ef_memreg memreg;
-  uint8_t* pkt_bufs = nullptr;
-  bool use_ctpio = false;
-  uint32_t ipsum_cache;
-  uint32_t buf_index_ = 0;
-  bool buf_mmapped;
   char last_error_[64] = "";
 };
