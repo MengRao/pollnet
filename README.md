@@ -38,6 +38,8 @@ struct ClientConf
   static const uint32_t RecvBufSize = 4096;
   // connect retry periods in seconds, set to 0 to disable auto reconnect and manually call allowReconnect() to reconnect one time
   static const uint32_t ConnRetrySec = 5;
+  // connect timeout in seconds, set to 0 to disable timeout
+  static const uint32_t ConnTimeoutSec = 5;
   // send timeout in seconds for each connection, set to 0 to disable timeout
   static const uint32_t SendTimeoutSec = 1;
   // receive timeout in seconds for each connection, set to 0 to disable timeout
@@ -189,6 +191,7 @@ struct ClientConf
 {
   static const uint32_t RecvBufSize = 4096;
   static const uint32_t ConnRetrySec = 5;
+  static const uint32_t ConnTimeoutSec = 5;
   static const uint32_t SendTimeoutSec = 1;
   static const uint32_t RecvTimeoutSec = 3;
   struct UserData
