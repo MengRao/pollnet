@@ -86,7 +86,6 @@ public:
     return true;
   }
 
-
   bool writeNonblock(const void* data, uint32_t size, bool more = false) {
     if (writeSome(data, size, more) != (int)size) {
       close("send error", true);
@@ -95,35 +94,9 @@ public:
     return true;
   }
 
-
 protected:
   template<typename ServerConf>
   friend class SocketTcpServer;
-
-  bool connect(struct sockaddr_in& server_addr, uint16_t local_port_be) {
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0) {
-      saveError("socket error", true);
-      return false;
-    }
-    if (local_port_be) {
-      struct sockaddr_in local_addr;
-      local_addr.sin_family = AF_INET;
-      local_addr.sin_addr.s_addr = INADDR_ANY;
-      local_addr.sin_port = local_port_be;
-      if (::bind(fd, (struct sockaddr*)&local_addr, sizeof(local_addr)) < 0) {
-        saveError("bind error", true);
-        ::close(fd);
-        return false;
-      }
-    }
-    if (::connect(fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-      saveError("connect error", true);
-      ::close(fd);
-      return false;
-    }
-    return open(time(0), fd);
-  }
 
   template<typename Handler>
   void pollConn(int64_t now, Handler& handler) {
@@ -131,7 +104,8 @@ protected:
       handler.onSendTimeout(*this);
       send_ts_ = now;
     }
-    bool got_data = read([&](const uint8_t* data, uint32_t size) { return handler.onTcpData(*this, data, size); });
+    bool got_data = read(
+      [&](const uint8_t* data, uint32_t size) { return handler.onTcpData(*this, data, size); });
     if (Conf::RecvTimeoutSec) {
       if (!got_data && now >= expire_ts_) {
         handler.onRecvTimeout(*this);
@@ -194,7 +168,8 @@ protected:
   }
 
   void saveError(const char* msg, bool check_errno) {
-    snprintf(last_error_, sizeof(last_error_), "%s %s", msg, check_errno ? (const char*)strerror(errno) : "");
+    snprintf(last_error_, sizeof(last_error_), "%s %s", msg,
+             check_errno ? (const char*)strerror(errno) : "");
   }
 
   int fd_ = -1;
@@ -228,23 +203,86 @@ public:
   void poll(Handler& handler) {
     int64_t now = time(0);
     if (!this->isConnected()) {
-      if (now < next_conn_ts_) return;
+      if (report_disconnect_) {
+        handler.onTcpDisconnect(*this);
+        report_disconnect_ = false;
+      }
+      int ret = connect(now);
+      if (ret <= 0) {
+        if (ret < 0) handler.onTcpConnectFailed();
+        return;
+      }
+      report_disconnect_ = true;
+      handler.onTcpConnected(*this);
+    }
+    this->pollConn(now, handler);
+  }
+
+private:
+  // return -1: failed, 0: pending: 1: success
+  int connect(int64_t now) {
+    if (conn_fd_ < 0) {
+      if (now < next_conn_ts_) return 0;
       if (Conf::ConnRetrySec)
         next_conn_ts_ = now + Conf::ConnRetrySec;
       else
         next_conn_ts_ = std::numeric_limits<int64_t>::max(); // disable reconnect
-      if (!this->connect(server_addr_, local_port_be_)) {
-        handler.onTcpConnectFailed();
-        return;
+
+      int fd = socket(AF_INET, SOCK_STREAM, 0);
+      if (fd < 0) {
+        Conn::saveError("socket error", true);
+        return -1;
       }
-      handler.onTcpConnected(*this);
+      if (local_port_be_) {
+        struct sockaddr_in local_addr;
+        local_addr.sin_family = AF_INET;
+        local_addr.sin_addr.s_addr = INADDR_ANY;
+        local_addr.sin_port = local_port_be_;
+        if (::bind(fd, (struct sockaddr*)&local_addr, sizeof(local_addr)) < 0) {
+          Conn::saveError("bind error", true);
+          ::close(fd);
+          return -1;
+        }
+      }
+      int flags = fcntl(fd, F_GETFL, 0);
+      if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        Conn::saveError("fcntl O_NONBLOCK error", true);
+        ::close(fd);
+        return -1;
+      }
+      conn_fd_ = fd;
+
+      if (Conf::ConnTimeoutSec)
+        conn_expire_ts_ = now + Conf::ConnTimeoutSec;
+      else
+        conn_expire_ts_ = std::numeric_limits<int64_t>::max(); // no expire
     }
-    this->pollConn(now, handler);
-    if (!this->isConnected()) handler.onTcpDisconnect(*this);
+
+    int ret = ::connect(conn_fd_, (struct sockaddr*)&server_addr_, sizeof(server_addr_));
+    if (ret == 0 || errno == EISCONN) {
+      if (!Conn::open(now, conn_fd_)) {
+        conn_fd_ = -1;
+        return -1;
+      }
+      conn_fd_ = -1;
+      return 1;
+    }
+    if ((errno == EINPROGRESS || errno == EALREADY) && now < conn_expire_ts_) {
+      return 0;
+    }
+    if (now < conn_expire_ts_)
+      Conn::saveError("connect error", true);
+    else
+      Conn::saveError("connect expired", false);
+    ::close(conn_fd_);
+    conn_fd_ = -1;
+    return -1;
   }
 
-private:
+  bool report_disconnect_ = false;
+  int conn_fd_ = -1;
   int64_t next_conn_ts_ = 0;
+  int64_t conn_expire_ts_ = 0;
   struct sockaddr_in server_addr_;
   uint16_t local_port_be_;
 };
@@ -342,7 +380,9 @@ public:
   }
 
 private:
-  void saveError(const char* msg) { snprintf(last_error_, sizeof(last_error_), "%s %s", msg, strerror(errno)); }
+  void saveError(const char* msg) {
+    snprintf(last_error_, sizeof(last_error_), "%s %s", msg, strerror(errno));
+  }
 
   int listenfd_ = -1;
   uint32_t conns_cnt_ = 0;
@@ -355,7 +395,8 @@ template<uint32_t RecvBufSize = 1500>
 class SocketUdpReceiver
 {
 public:
-  bool init(const char* interface, const char* dest_ip, uint16_t dest_port, const char* subscribe_ip = "") {
+  bool init(const char* interface, const char* dest_ip, uint16_t dest_port,
+            const char* subscribe_ip = "") {
     if ((fd_ = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
       saveError("socket error");
       return false;
@@ -439,11 +480,14 @@ public:
   }
 
   bool sendto(const void* data, uint32_t size, const sockaddr_in& dst_addr) {
-    return ::sendto(fd_, data, size, 0, (const struct sockaddr*)&dst_addr, sizeof(dst_addr)) == size;
+    return ::sendto(fd_, data, size, 0, (const struct sockaddr*)&dst_addr, sizeof(dst_addr)) ==
+           size;
   }
 
 private:
-  void saveError(const char* msg) { snprintf(last_error_, sizeof(last_error_), "%s %s", msg, strerror(errno)); }
+  void saveError(const char* msg) {
+    snprintf(last_error_, sizeof(last_error_), "%s %s", msg, strerror(errno));
+  }
 
   int fd_ = -1;
   uint8_t buf[RecvBufSize];
@@ -453,7 +497,8 @@ private:
 class SocketUdpSender
 {
 public:
-  bool init(const char* interface, const char* local_ip, uint16_t local_port, const char* dest_ip, uint16_t dest_port) {
+  bool init(const char* interface, const char* local_ip, uint16_t local_port, const char* dest_ip,
+            uint16_t dest_port) {
     if ((fd_ = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
       saveError("socket error");
       return false;
@@ -511,7 +556,9 @@ public:
   bool write(const void* data, uint32_t size) { return ::send(fd_, data, size, 0) == size; }
 
 private:
-  void saveError(const char* msg) { snprintf(last_error_, sizeof(last_error_), "%s %s", msg, strerror(errno)); }
+  void saveError(const char* msg) {
+    snprintf(last_error_, sizeof(last_error_), "%s %s", msg, strerror(errno));
+  }
 
   int fd_ = -1;
   char last_error_[64] = "";
@@ -580,9 +627,10 @@ public:
   }
 
 private:
-  void saveError(const char* msg) { snprintf(last_error_, sizeof(last_error_), "%s %s", msg, strerror(errno)); }
+  void saveError(const char* msg) {
+    snprintf(last_error_, sizeof(last_error_), "%s %s", msg, strerror(errno));
+  }
   int fd_ = -1;
   uint8_t buf[RecvBufSize];
   char last_error_[64] = "";
 };
-

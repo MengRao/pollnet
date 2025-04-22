@@ -4,6 +4,7 @@ struct ClientConf
 {
   static const uint32_t RecvBufSize = 4096;
   static const uint32_t ConnRetrySec = 5;
+  static const uint32_t ConnTimeoutSec = 5;
   static const uint32_t SendTimeoutSec = 1;
   static const uint32_t RecvTimeoutSec = 3;
   struct UserData
@@ -88,7 +89,9 @@ int main(int argc, char** argv) {
         cout << "onRecvTimeout" << endl;
         conn.close("timeout");
       }
-      void onTcpDisconnect(TcpClient::Conn& conn) { cout << "onDisconnect: " << conn.getLastError() << endl; }
+      void onTcpDisconnect(TcpClient::Conn& conn) {
+        cout << "onDisconnect: " << conn.getLastError() << endl;
+      }
     } handler;
     client.poll(handler);
   }
