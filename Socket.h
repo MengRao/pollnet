@@ -529,6 +529,12 @@ public:
       return false;
     }
 
+    int ttl = 64;
+    if (setsockopt(fd_, IPPROTO_IP, IP_MULTICAST_TTL, (const void*)&ttl, sizeof(ttl)) < 0) {
+      close("setsockopt IP_MULTICAST_TTL failed");
+      return false;
+    }
+
     return true;
   }
 
